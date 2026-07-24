@@ -70,7 +70,7 @@ export default function CsvView({ lang }: { lang: Lang }) {
         <input
           ref={fileInput}
           type="file"
-          accept=".csv"
+          accept=".csv,.xlsx,.xls"
           onChange={handleFile}
           className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-[var(--accent)] file:text-black file:text-sm file:font-medium file:cursor-pointer cursor-pointer text-[var(--muted)]"
         />
