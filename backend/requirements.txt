@@ -15,4 +15,3 @@ markdown
 openai
 tiktoken
 python-dotenv
-sentence-transformers

@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, UnstructuredMarkdownLoader
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from embeddings import get_embeddings
 from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -19,7 +19,6 @@ KNOWLEDGE_BASE_DIRS = {
     "uk": Path("knowledge_base_uk"),
 }
 CHROMA_DIR = "chroma_db"
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
 def get_openrouter_llm() -> ChatOpenAI:
@@ -76,7 +75,7 @@ def main() -> None:
 
     print(f"Total chunks to index: {len(all_chunks)}")
 
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embeddings = get_embeddings()
 
     vectorstore = Chroma.from_documents(
         documents=all_chunks,
