@@ -30,6 +30,8 @@ load_dotenv()
 
 app = FastAPI(title="Revenue AI Assistant API")
 
+# CORS: allow the Next.js frontend (set FRONTEND_ORIGIN in .env for production,
+# e.g. https://your-app.vercel.app). "*" is fine for local dev only.
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +40,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# In-memory registry of uploaded CSVs for this process (fine for a course project;
+# use Redis/S3 if this ever needs to survive a restart or run multi-instance).
 _UPLOADED_FILES: dict[str, dict] = {}
 
 Lang = Literal["en", "uk"]
@@ -87,6 +91,10 @@ def chat(req: ChatRequest):
     docs = db.similarity_search(safe_query, k=2, filter={"lang": req.lang})
     note = None
     if not docs:
+        # Filtered retrieval found nothing — most likely chroma_db is empty or
+        # predates the "lang" metadata field. Retry without the filter so the
+        # user still sees *something* was retrieved, and surface a clear note
+        # instead of silently returning zero sources.
         docs = db.similarity_search(safe_query, k=2)
         if docs:
             note = (
@@ -112,14 +120,27 @@ def chat(req: ChatRequest):
 @app.post("/api/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
     raw = await file.read()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+    filename = (file.filename or "").lower()
+    is_excel = filename.endswith(".xlsx") or filename.endswith(".xls")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=(".xlsx" if is_excel else ".csv")) as tmp:
         tmp.write(raw)
-        csv_path = tmp.name
+        raw_path = tmp.name
 
     try:
-        df = pd.read_csv(csv_path)
+        df = pd.read_excel(raw_path) if is_excel else pd.read_csv(raw_path)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {exc}")
+        kind = "Excel" if is_excel else "CSV"
+        raise HTTPException(status_code=400, detail=f"Could not parse {kind} file: {exc}")
+
+    if is_excel:
+        # Downstream tools (csv_aggregate, get_csv_agent) read the stored path
+        # with pd.read_csv — re-persist as CSV so they don't need to know the
+        # original file was Excel.
+        csv_path = raw_path.rsplit(".", 1)[0] + ".csv"
+        df.to_csv(csv_path, index=False)
+    else:
+        csv_path = raw_path
 
     file_id = str(uuid.uuid4())
     _UPLOADED_FILES[file_id] = {"path": csv_path, "columns": list(df.columns), "rows": len(df)}
@@ -208,7 +229,12 @@ def live_metrics():
 
 @app.post("/api/live-metrics/refresh")
 def trigger_refresh(x_refresh_token: str = Header(default="")):
-    """Recomputes the live metrics snapshot from the data source."""
+    """Recomputes the live metrics snapshot from the data source.
+
+    Called by a scheduled job (Render Cron / Vercel Cron hitting this URL), not
+    by the frontend directly. Protected by a shared secret so randoms can't
+    trigger recomputation.
+    """
     expected = os.getenv("REFRESH_TOKEN")
     if not expected or x_refresh_token != expected:
         raise HTTPException(status_code=401, detail="Invalid or missing refresh token.")
