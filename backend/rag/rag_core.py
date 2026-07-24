@@ -5,7 +5,7 @@ just without any Streamlit calls, so it can be used from FastAPI (or anything el
 import os
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_huggingface import HuggingFaceEmbeddings
+from embeddings import get_embeddings
 from langchain_community.vectorstores import Chroma
 from langchain_openai import ChatOpenAI
 
@@ -65,7 +65,7 @@ def sanitize_user_input(text: str) -> str:
 def get_vectorstore():
     global _vectorstore
     if _vectorstore is None:
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embeddings = get_embeddings()
         _vectorstore = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
     return _vectorstore
 
