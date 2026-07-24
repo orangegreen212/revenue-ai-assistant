@@ -4,6 +4,7 @@ Wraps the existing LangChain / RAG / tool-calling logic (unchanged) behind a
 REST API so a separate Next.js frontend can talk to it.
 """
 
+import json
 import os
 import tempfile
 import uuid
@@ -39,6 +40,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc: Exception):
+    """Safety net: an uncaught exception from Starlette's default error path
+    can skip CORSMiddleware entirely, which the browser reports as a CORS
+    error even though the real problem is a server-side 500. Catching it here
+    keeps the response inside FastAPI's normal flow, so CORSMiddleware still
+    attaches the right headers.
+    """
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Unhandled server error: {exc}"},
+    )
 
 # In-memory registry of uploaded CSVs for this process (fine for a course project;
 # use Redis/S3 if this ever needs to survive a restart or run multi-instance).
@@ -123,34 +140,39 @@ async def upload_csv(file: UploadFile = File(...)):
     filename = (file.filename or "").lower()
     is_excel = filename.endswith(".xlsx") or filename.endswith(".xls")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=(".xlsx" if is_excel else ".csv")) as tmp:
-        tmp.write(raw)
-        raw_path = tmp.name
-
     try:
-        df = pd.read_excel(raw_path) if is_excel else pd.read_csv(raw_path)
-    except Exception as exc:  # noqa: BLE001
-        kind = "Excel" if is_excel else "CSV"
-        raise HTTPException(status_code=400, detail=f"Could not parse {kind} file: {exc}")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=(".xlsx" if is_excel else ".csv")) as tmp:
+            tmp.write(raw)
+            raw_path = tmp.name
 
-    if is_excel:
-        # Downstream tools (csv_aggregate, get_csv_agent) read the stored path
-        # with pd.read_csv — re-persist as CSV so they don't need to know the
-        # original file was Excel.
-        csv_path = raw_path.rsplit(".", 1)[0] + ".csv"
-        df.to_csv(csv_path, index=False)
-    else:
-        csv_path = raw_path
+        try:
+            df = pd.read_excel(raw_path) if is_excel else pd.read_csv(raw_path)
+        except Exception as exc:  # noqa: BLE001
+            kind = "Excel" if is_excel else "CSV"
+            raise HTTPException(status_code=400, detail=f"Could not parse {kind} file: {exc}")
 
-    file_id = str(uuid.uuid4())
-    _UPLOADED_FILES[file_id] = {"path": csv_path, "columns": list(df.columns), "rows": len(df)}
+        if is_excel:
+            # Downstream tools (csv_aggregate, get_csv_agent) read the stored path
+            # with pd.read_csv — re-persist as CSV so they don't need to know the
+            # original file was Excel.
+            csv_path = raw_path.rsplit(".", 1)[0] + ".csv"
+            df.to_csv(csv_path, index=False)
+        else:
+            csv_path = raw_path
 
-    return {
-        "file_id": file_id,
-        "rows": len(df),
-        "columns": list(df.columns),
-        "preview": df.head(5).to_dict(orient="records"),
-    }
+        file_id = str(uuid.uuid4())
+        _UPLOADED_FILES[file_id] = {"path": csv_path, "columns": list(df.columns), "rows": len(df)}
+
+        return {
+            "file_id": file_id,
+            "rows": len(df),
+            "columns": list(df.columns),
+            "preview": json.loads(df.head(5).to_json(orient="records", date_format="iso")),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — never let an unhandled error skip CORS headers
+        raise HTTPException(status_code=500, detail=f"Unexpected error processing upload: {exc}")
 
 
 @app.post("/api/csv-chat", response_model=ChatResponse)
