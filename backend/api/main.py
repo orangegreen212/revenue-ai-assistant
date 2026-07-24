@@ -147,6 +147,13 @@ async def upload_csv(file: UploadFile = File(...)):
 
         try:
             df = pd.read_excel(raw_path) if is_excel else pd.read_csv(raw_path)
+            # Normalize column names to plain strings once, right here — otherwise
+            # Timestamp/date column headers get serialized differently in the
+            # "columns" list vs. the "preview" rows further down, and the
+            # frontend can't match them up (looks like every cell is "undefined").
+            df.columns = [
+                c.isoformat() if hasattr(c, "isoformat") else str(c) for c in df.columns
+            ]
         except Exception as exc:  # noqa: BLE001
             kind = "Excel" if is_excel else "CSV"
             raise HTTPException(status_code=400, detail=f"Could not parse {kind} file: {exc}")
