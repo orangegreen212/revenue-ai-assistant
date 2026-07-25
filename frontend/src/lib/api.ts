@@ -85,6 +85,7 @@ export interface LiveMetrics {
   mrr_prev_month?: number;
   mom_mrr_growth_pct?: number | null;
   logo_churn_rate_pct?: number | null;
+  new_customers?: number;
   generated_at: string;
 }
 
