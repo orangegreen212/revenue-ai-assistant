@@ -296,3 +296,18 @@ def admin_stats(x_admin_token: str = Header(default="")):
     breakdown by endpoint and by which tools fired most often."""
     _check_admin_token(x_admin_token)
     return summary_stats()
+
+
+@app.post("/api/admin/evaluate")
+def admin_evaluate(x_admin_token: str = Header(default=""), lang: str = "en"):
+    """Runs the RAG retrieval evaluation (Top-1/Top-3 accuracy, avg latency)
+    against evaluation/questions.json and returns the full report. Lets you
+    demo retrieval quality live from the deployed site, not just locally."""
+    _check_admin_token(x_admin_token)
+
+    from evaluation.run_evaluation import run_evaluation
+
+    try:
+        return run_evaluation(lang=lang)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}")
