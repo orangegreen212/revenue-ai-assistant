@@ -1,14 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { getAdminLogs, getAdminStats, type AdminStats, type LogRow } from "@/lib/api";
+import { getAdminLogs, getAdminStats, runEvaluation, type AdminStats, type EvalResult, type LogRow } from "@/lib/api";
 
 export default function AdminView() {
   const [token, setToken] = useState("");
   const [logs, setLogs] = useState<LogRow[] | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [evalResult, setEvalResult] = useState<EvalResult | null>(null);
+  const [evalLoading, setEvalLoading] = useState(false);
+  const [evalError, setEvalError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  async function runEval() {
+    setEvalLoading(true);
+    setEvalError(null);
+    try {
+      const result = await runEvaluation(token);
+      setEvalResult(result);
+    } catch (err) {
+      setEvalError(err instanceof Error ? err.message : String(err));
+      setEvalResult(null);
+    } finally {
+      setEvalLoading(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -119,6 +136,55 @@ export default function AdminView() {
             </div>
           </div>
         )}
+
+        <div className="pt-6 border-t border-[var(--border)]">
+          <p className="text-xs section-number mb-2">05 — RAG Retrieval Evaluation</p>
+          <p className="text-sm text-[var(--muted)] mb-3">
+            Runs the knowledge base questions against the vector store and checks whether the
+            expected document appears in the Top-1 / Top-3 retrieved chunks.
+          </p>
+          <button
+            onClick={runEval}
+            disabled={evalLoading || !token}
+            className="px-5 py-3 rounded-md bg-[var(--accent)] text-black text-sm font-medium disabled:opacity-50"
+          >
+            {evalLoading ? "Running..." : "Run Evaluation"}
+          </button>
+
+          {evalError && <p className="text-red-400 text-sm mt-3">{evalError}</p>}
+
+          {evalResult && (
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <StatCard label="Top-1 Accuracy" value={`${evalResult.summary.top1_accuracy_pct}%`} />
+                <StatCard label="Top-3 Accuracy" value={`${evalResult.summary.top3_accuracy_pct}%`} />
+                <StatCard label="Avg Retrieval" value={`${evalResult.summary.avg_retrieval_ms} ms`} />
+              </div>
+              <div className="overflow-x-auto border border-[var(--border)] rounded-md">
+                <table className="text-xs w-full">
+                  <thead>
+                    <tr className="bg-[var(--surface-2)]">
+                      <th className="px-3 py-2 text-left">Question</th>
+                      <th className="px-3 py-2 text-left">Expected</th>
+                      <th className="px-3 py-2 text-left">Top-1</th>
+                      <th className="px-3 py-2 text-left">Top-3</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {evalResult.rows.map((row, i) => (
+                      <tr key={i} className="border-t border-[var(--border)]">
+                        <td className="px-3 py-2 max-w-[280px] truncate">{row.question}</td>
+                        <td className="px-3 py-2">{row.expected_document}</td>
+                        <td className="px-3 py-2">{row.top1_success ? "✅" : "❌"}</td>
+                        <td className="px-3 py-2">{row.top3_success ? "✅" : "❌"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
