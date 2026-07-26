@@ -130,3 +130,31 @@ export async function getAdminStats(token: string): Promise<AdminStats> {
   });
   return handle<AdminStats>(res);
 }
+
+export interface EvalRow {
+  question: string;
+  expected_document: string;
+  retrieved_top_k: string[];
+  top1_success: boolean;
+  top3_success: boolean;
+  latency_ms: number;
+}
+
+export interface EvalResult {
+  summary: {
+    total_questions: number;
+    top1_accuracy_pct: number;
+    top3_accuracy_pct: number;
+    avg_retrieval_ms: number;
+    lang: string;
+  };
+  rows: EvalRow[];
+}
+
+export async function runEvaluation(token: string): Promise<EvalResult> {
+  const res = await fetch(`${API_URL}/api/admin/evaluate`, {
+    method: "POST",
+    headers: { "x-admin-token": token },
+  });
+  return handle<EvalResult>(res);
+}
