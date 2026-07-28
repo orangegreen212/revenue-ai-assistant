@@ -13,6 +13,7 @@ chromadb
 pandas
 openpyxl
 unstructured
+markdown
 openai
 tiktoken
 python-dotenv
