@@ -3,6 +3,7 @@ uvicorn[standard]
 python-multipart
 stripe
 langchain-experimental
+tabulate
 langchain
 langchain-openai
 langchain-community
@@ -10,10 +11,9 @@ langchain-huggingface
 langchain-text-splitters
 chromadb
 pandas
+openpyxl
 unstructured
-markdown
 openai
 tiktoken
 python-dotenv
-openpyxl
-tabulate
+pytest

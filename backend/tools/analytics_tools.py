@@ -6,7 +6,19 @@ from typing import Optional
 import pandas as pd
 from langchain_core.tools import tool
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
-from langchain_openai import ChatOpenAI
+
+
+def _load_csv(file_path: str) -> tuple[Optional["pd.DataFrame"], Optional[str]]:
+    """Shared file-loading boilerplate for csv_aggregate and get_csv_agent.
+    Returns (dataframe, None) on success or (None, error_message) on failure.
+    """
+    if not os.path.exists(file_path):
+        return None, f"Error: file not found at '{file_path}'."
+    try:
+        return pd.read_csv(file_path), None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"Error reading CSV at '{file_path}': {exc}"
+
 
 # Rough SaaS industry reference ranges (illustrative, not audited benchmarks).
 _KPI_BENCHMARKS = {
@@ -144,13 +156,9 @@ def csv_aggregate(
         operation: one of "sum", "mean", "count", "min", "max", "median".
         groupby: optional column to group by, e.g. "country".
     """
-    if not os.path.exists(file_path):
-        return f"Error: file not found at '{file_path}'."
-
-    try:
-        df = pd.read_csv(file_path)
-    except Exception as exc:  # noqa: BLE001
-        return f"Error reading CSV at '{file_path}': {exc}"
+    df, err = _load_csv(file_path)
+    if err:
+        return err
 
     if column not in df.columns:
         return f"Error: column '{column}' not found. Available columns: {list(df.columns)}."
@@ -181,24 +189,44 @@ def get_csv_agent(file_path: str, question: str) -> str:
     For plain totals/averages/counts, prefer csv_aggregate — it computes the exact
     number directly instead of relying on the model's own arithmetic.
     """
-    if not os.path.exists(file_path):
-        return f"Error: file not found at '{file_path}'."
-
-    try:
-        df = pd.read_csv(file_path)
-    except Exception as exc:  # noqa: BLE001
-        return f"Error reading CSV at '{file_path}': {exc}"
+    df, err = _load_csv(file_path)
+    if err:
+        return err
 
     if df.empty:
         return "Error: the uploaded CSV has no rows."
 
-    llm = ChatOpenAI(
-        model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"),
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-        base_url="https://openrouter.ai/api/v1",
-        temperature=0,
-    )
+    # Defense in depth: has_prompt_injection() already guards the user's typed
+    # question, but the CSV's own cell values are also fed to an LLM that can
+    # execute code (allow_dangerous_code=True below). Scan cell text for the
+    # same injection markers so a malicious *file* can't smuggle instructions
+    # in through the data instead of the chat box.
+    from rag.rag_core import has_prompt_injection
 
+    sample_text = " ".join(
+        str(v) for v in df.head(50).astype(str).values.flatten()
+    )
+    if has_prompt_injection(sample_text):
+        return (
+            "Error: the uploaded file contains text patterns that look like "
+            "prompt-injection attempts and was not passed to the code-executing "
+            "agent. Try csv_aggregate instead, or clean the file and re-upload."
+        )
+
+    # Lazy import to avoid a circular import (rag_core imports this module's
+    # tools) — reuses the same LLM config as the main chat flow instead of
+    # duplicating ChatOpenAI instantiation with different parameters here.
+    from rag.rag_core import get_llm
+
+    llm = get_llm()
+
+    # SECURITY NOTE: allow_dangerous_code=True lets the agent execute LLM-generated
+    # Python via pandas' eval/exec internally. This is a known, named trade-off in
+    # LangChain (hence the flag's name) — acceptable for a course project running
+    # in an isolated container with no persistent secrets in the runtime, but NOT
+    # something to enable as-is against untrusted multi-tenant production traffic
+    # without a real sandboxed execution environment (e.g. gVisor, a locked-down
+    # subprocess, or a separate worker with no filesystem/network access).
     agent = create_pandas_dataframe_agent(
         llm,
         df,
