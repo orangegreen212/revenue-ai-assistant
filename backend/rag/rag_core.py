@@ -71,12 +71,29 @@ def get_vectorstore():
 
 
 def get_llm():
+    primary_model = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
+
+    # Optional comma-separated fallback list, e.g.
+    # OPENROUTER_FALLBACK_MODELS=meta-llama/llama-3.3-70b-instruct:free,openai/gpt-4o-mini
+    # OpenRouter tries these in order, within the SAME request, if the primary
+    # model errors or is rate-limited (common on free tiers under load) — this
+    # avoids surfacing a raw 429 to the user just because one free model's
+    # upstream provider is temporarily overloaded.
+    fallback_env = os.getenv("OPENROUTER_FALLBACK_MODELS", "")
+    fallback_models = [m.strip() for m in fallback_env.split(",") if m.strip()]
+
+    extra_body = {}
+    if fallback_models:
+        extra_body["models"] = [primary_model] + fallback_models
+        extra_body["route"] = "fallback"
+
     return ChatOpenAI(
-        model=os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"),
+        model=primary_model,
         api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
         max_tokens=2000,
         temperature=0.1,
+        extra_body=extra_body or None,
     )
 
 
