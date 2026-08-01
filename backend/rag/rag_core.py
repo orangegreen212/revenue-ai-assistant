@@ -10,15 +10,26 @@ from langchain_community.vectorstores import Chroma
 from langchain_openai import ChatOpenAI
 
 from tools.analytics_tools import (
+    analyze_financial_statement,
     calculate_kpi,
     generate_sql,
     get_benchmark,
     get_csv_agent,
     csv_aggregate,
+    csv_row_sum,
     get_live_metric,
 )
 
-CHAT_TOOLS = [calculate_kpi, generate_sql, get_benchmark, get_csv_agent, csv_aggregate, get_live_metric]
+CHAT_TOOLS = [
+    calculate_kpi,
+    generate_sql,
+    get_benchmark,
+    get_csv_agent,
+    csv_aggregate,
+    csv_row_sum,
+    analyze_financial_statement,
+    get_live_metric,
+]
 TOOLS_BY_NAME = {t.name: t for t in CHAT_TOOLS}
 MAX_TOOL_ROUNDS = 5
 
@@ -134,16 +145,26 @@ def run_chat_with_tools(
                 "Call tools when you need a KPI calculation, SQL example, benchmark, "
                 "or dataframe analysis.\n"
                 "If the context contains uploaded CSV data: for a plain total/sum/average/count/min/max "
-                "(optionally grouped by a column), ALWAYS call csv_aggregate to get the exact number — "
-                "never compute or guess the number yourself. Only use get_csv_agent for questions "
-                "csv_aggregate can't express (filters, multi-step logic, comparisons).\n"
+                "of a NAMED COLUMN (optionally grouped by another column), ALWAYS call csv_aggregate to "
+                "get the exact number — never compute or guess the number yourself.\n"
+                "If instead the user asks for a total/sum of a named LINE ITEM or ROW LABEL — e.g. "
+                "\"total non-current assets\", \"sum of marketing expenses\" in a table where that phrase "
+                "is a ROW, not a column header (common in financial statements/wide tables with periods "
+                "as columns) — call csv_row_sum with that label instead. Try csv_row_sum BEFORE "
+                "get_csv_agent whenever the question names a specific line item to total.\n"
+                "For uploaded Balance Sheet / Income Statement / Cash Flow files, prefer "
+                "analyze_financial_statement for line lookup, yearly values, year comparison, "
+                "YoY growth, or validating that a total equals the sum of component lines.\n"
+                "Only use get_csv_agent for what neither csv_aggregate, csv_row_sum, nor "
+                "analyze_financial_statement can express "
+                "(multi-condition filters, comparisons across multiple items, trend/why questions).\n"
                 "If the user asks about OUR/current/actual/right-now company numbers "
                 "(not general SaaS knowledge), call get_live_metric instead of answering "
                 "from the knowledge-base context — it returns real computed data with a "
                 "date stamp. Never present live-metric values as generic industry knowledge.\n"
                 f'When calling calculate_kpi, get_benchmark, or get_live_metric, always pass lang="{lang}".\n'
                 "Available tools: calculate_kpi, generate_sql, get_benchmark, get_csv_agent, "
-                "csv_aggregate, get_live_metric.\n\n"
+                "csv_aggregate, csv_row_sum, analyze_financial_statement, get_live_metric.\n\n"
                 f"Context:\n{context}"
             )
         ),
