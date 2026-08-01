@@ -207,7 +207,7 @@ Columns:
 Rows:
 {meta['rows']}
 
-When using get_csv_agent, csv_aggregate, or csv_row_sum, use the exact file path above.
+When using get_csv_agent, csv_aggregate, csv_row_sum, or analyze_financial_statement, use the exact file path above.
 """
     llm = get_llm()
     with track_request("csv_chat", req.lang, req.query) as log_ctx:
