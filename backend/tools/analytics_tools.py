@@ -183,22 +183,7 @@ def csv_aggregate(
 
 @tool
 def csv_row_sum(file_path: str, label: str, label_column: Optional[str] = None) -> str:
-    """Sum a row's values across all numeric columns — for "wide" tables where
-    a metric is a ROW LABEL and periods/years are COLUMNS (e.g. financial
-    statements: "Total non-current assets" as a row, with columns like
-    "2025-09-30", "2024-09-30", ...). Use this instead of csv_aggregate
-    whenever the user asks for a total/sum of a named LINE ITEM rather than a
-    named column — csv_aggregate cannot do this because the thing being
-    summed isn't a column, it's a row.
-
-    Args:
-        file_path: path to the CSV.
-        label: the row label to find, e.g. "Total non-current assets"
-            (case-insensitive substring match — doesn't need to be exact).
-        label_column: which column holds the row labels. If omitted, the
-            first column is used (financial-statement exports typically put
-            labels in the first, often-unnamed column).
-    """
+    """Sum a row's values across all numeric columns — resilient to financial CSV formats."""
     df, err = _load_csv(file_path)
     if err:
         return err
@@ -226,15 +211,35 @@ def csv_row_sum(file_path: str, label: str, label_column: Optional[str] = None) 
         )
 
     row = matches.iloc[0]
-    numeric_cols = [c for c in df.columns if c != label_col and pd.api.types.is_numeric_dtype(df[c])]
-    if not numeric_cols:
-        return f"Error: no numeric columns found to sum for row '{label}'."
+    total = 0.0
+    breakdown = []
 
-    values = row[numeric_cols]
-    total = values.sum(skipna=True)
-    breakdown = ", ".join(f"{c}={values[c]}" for c in numeric_cols)
-    return f"Row '{row[label_col]}': sum across {len(numeric_cols)} columns = {total}\nBreakdown: {breakdown}"
+    # Aggressively clean and extract numbers from the matched row
+    for c in df.columns:
+        if c == label_col:
+            continue
+        
+        # Convert to string, strip spaces, commas, and dollar signs
+        raw_val = str(row[c]).strip().replace(',', '').replace('$', '')
+        
+        # Handle accounting negative format: "(100.50)" -> "-100.50"
+        if raw_val.startswith('(') and raw_val.endswith(')'):
+            raw_val = '-' + raw_val[1:-1]
+            
+        try:
+            val = float(raw_val)
+            if pd.notna(val):
+                total += val
+                breakdown.append(f"{c}={val}")
+        except ValueError:
+            # Skip cells that are truly text (like "null", "September 27", etc.)
+            continue
 
+    if not breakdown:
+        return f"Error: no numeric values found to sum for row '{label}'."
+
+    breakdown_str = ", ".join(breakdown)
+    return f"Row '{row[label_col]}': sum across {len(breakdown)} columns = {total}\nBreakdown: {breakdown_str}"
 
 @tool
 def get_csv_agent(file_path: str, question: str) -> str:
