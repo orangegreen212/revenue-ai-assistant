@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { Lang } from "@/lib/api";
 import { sendCsvChat, uploadCsv } from "@/lib/api";
 import { STRINGS } from "@/lib/strings";
+import MarkdownMessage from "./MarkdownMessage";
 
 interface Message {
   role: "user" | "assistant";
@@ -113,15 +114,19 @@ export default function CsvView({ lang }: { lang: Lang }) {
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[70%] rounded-lg px-4 py-3 text-sm whitespace-pre-wrap ${
+              className={`max-w-[70%] rounded-lg px-4 py-3 ${
                 m.role === "user"
-                  ? "bg-[var(--accent)] text-black"
+                  ? "text-sm whitespace-pre-wrap bg-[var(--accent)] text-black"
                   : m.error
-                  ? "bg-red-950 text-red-200 border border-red-800"
+                  ? "text-sm whitespace-pre-wrap bg-red-950 text-red-200 border border-red-800"
                   : "bg-[var(--surface-2)] border border-[var(--border)]"
               }`}
             >
-              {m.content}
+              {m.role === "assistant" && !m.error ? (
+                <MarkdownMessage content={m.content} />
+              ) : (
+                m.content
+              )}
             </div>
           </div>
         ))}
