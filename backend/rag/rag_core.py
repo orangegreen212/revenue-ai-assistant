@@ -113,7 +113,36 @@ def run_chat_with_tools(
 ) -> tuple[str, list[str]]:
     """Returns (answer, tools_used) — tools_used is the list of tool names
     the model actually called, in order, for logging/monitoring."""
+    # TEMP DEBUG: tool-calling pipeline — remove after root-cause confirmed.
+    _dbg = os.getenv("DEBUG_TOOL_CALLING", "1") == "1"
+
+    def _log(*args):
+        if _dbg:
+            print("[tool-debug]", *args, flush=True)
+
+    tool_names = [t.name for t in CHAT_TOOLS]
+    model_name = (
+        getattr(llm, "model_name", None)
+        or getattr(llm, "model", None)
+        or os.getenv("OPENROUTER_MODEL")
+    )
+    _log("registered tools:", tool_names)
+    _log("model name (config):", model_name)
+    _log("bind_tools(CHAT_TOOLS) executing…")
     llm_with_tools = llm.bind_tools(CHAT_TOOLS)
+    _log("bind_tools() executed: True; bound type=", type(llm_with_tools).__name__)
+    bound_kwargs = getattr(llm_with_tools, "kwargs", None) or {}
+    bound_tools = bound_kwargs.get("tools") or []
+    bound_names = []
+    for spec in bound_tools:
+        if isinstance(spec, dict):
+            fn = spec.get("function") if isinstance(spec.get("function"), dict) else spec
+            bound_names.append(fn.get("name"))
+        else:
+            bound_names.append(getattr(spec, "name", str(spec)))
+    _log("tools visible to model after bind:", bound_names)
+    _log("tool_choice overridden?:", bound_kwargs.get("tool_choice"))
+    _log("CHAT_TOOLS is identical list bound:", bound_names == tool_names)
 
     if allow_any_csv_topic:
         domain_rule = (
@@ -174,33 +203,50 @@ def run_chat_with_tools(
     tools_used: list[str] = []
 
     try:
+        _log("invoking model (round 0)…")
         response = llm_with_tools.invoke(messages)
     except Exception as exc:  # noqa: BLE001
+        _log("EXCEPTION on initial invoke (swallowed into error return):", repr(exc))
         return f"Error calling the language model: {exc}", tools_used
 
-    for _ in range(MAX_TOOL_ROUNDS):
+    for round_i in range(MAX_TOOL_ROUNDS):
+        md = getattr(response, "response_metadata", None) or {}
+        _log(
+            f"raw AIMessage round={round_i}: type={type(response).__name__} "
+            f"model_name={md.get('model_name')} finish_reason={md.get('finish_reason')} "
+            f"content_repr={repr(getattr(response, 'content', None))[:400]}"
+        )
+        _log(f"additional_kwargs keys: {list((getattr(response, 'additional_kwargs', None) or {}).keys())}")
         tool_calls = getattr(response, "tool_calls", None) or []
+        _log(f"tool_calls in AIMessage: {tool_calls}")
         if not tool_calls:
+            _log("no tool_calls — exiting tool loop")
             break
 
         messages.append(response)
         for tool_call in tool_calls:
             name = tool_call.get("name", "")
+            args = tool_call.get("args", {})
             tools_used.append(name)
             tool_fn = TOOLS_BY_NAME.get(name)
             call_id = tool_call.get("id", name)
+            _log(f"executing tool name={name!r} id={call_id!r} args={args!r} known={tool_fn is not None}")
             try:
                 if tool_fn is None:
                     result = f"Error: unknown tool '{name}'."
                 else:
-                    result = tool_fn.invoke(tool_call.get("args", {}))
+                    result = tool_fn.invoke(args)
             except Exception as exc:  # noqa: BLE001
+                _log(f"EXCEPTION during tool execution {name!r}:", repr(exc))
                 result = f"Error running tool '{name}': {exc}"
+            _log(f"tool result ({name})[:500]={str(result)[:500]!r}")
             messages.append(ToolMessage(content=str(result), tool_call_id=call_id))
 
         try:
+            _log(f"invoking model (round {round_i + 1}) after tool results…")
             response = llm_with_tools.invoke(messages)
         except Exception as exc:  # noqa: BLE001
+            _log("EXCEPTION on follow-up invoke:", repr(exc))
             return f"Error calling the language model during tool use: {exc}", tools_used
 
     content = response.content if isinstance(response, AIMessage) else str(response)
@@ -209,7 +255,13 @@ def run_chat_with_tools(
             block.get("text", str(block)) if isinstance(block, dict) else str(block)
             for block in content
         )
+    _log(f"final content_repr={repr(content)[:500]} tools_used={tools_used}")
     if not content or not str(content).strip():
+        _log(
+            "ROOT SYMPTOM: empty final content. "
+            "If tools_used is empty, model never emitted tool_calls. "
+            "If tools_used is non-empty, follow-up model response had no text."
+        )
         return (
             "I could not produce an answer. Try rephrasing, or check that the model supports tool calling.",
             tools_used,
