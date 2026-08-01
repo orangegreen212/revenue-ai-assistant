@@ -77,3 +77,37 @@ class TestCsvAggregate:
         assert "200" in csv_aggregate.invoke(
             {"file_path": sample_csv, "column": "session_time", "operation": "max"}
         )
+
+
+class TestCsvRowSum:
+    @pytest.fixture
+    def financials_csv(self, tmp_path):
+        df = pd.DataFrame({
+            "Unnamed: 0": ["Tax Effect Of Unusual Items", "Total non-current assets", "Total current assets"],
+            "2025-09-30": [0, 144748, 55000],
+            "2024-09-30": [0, 134661, 52000],
+        })
+        path = tmp_path / "financials.csv"
+        df.to_csv(path, index=False)
+        return str(path)
+
+    def test_sums_row_across_period_columns(self, financials_csv):
+        from tools.analytics_tools import csv_row_sum
+        result = csv_row_sum.invoke({"file_path": financials_csv, "label": "Total non-current assets"})
+        assert "279409" in result  # 144748 + 134661
+
+    def test_case_insensitive_partial_match(self, financials_csv):
+        from tools.analytics_tools import csv_row_sum
+        result = csv_row_sum.invoke({"file_path": financials_csv, "label": "non-current"})
+        assert "279409" in result
+
+    def test_no_match_lists_sample_values(self, financials_csv):
+        from tools.analytics_tools import csv_row_sum
+        result = csv_row_sum.invoke({"file_path": financials_csv, "label": "Nonexistent Line Item"})
+        assert "Error" in result
+        assert "Sample values" in result
+
+    def test_ambiguous_match_lists_all_candidates(self, financials_csv):
+        from tools.analytics_tools import csv_row_sum
+        result = csv_row_sum.invoke({"file_path": financials_csv, "label": "Total"})
+        assert "Found 2 rows" in result

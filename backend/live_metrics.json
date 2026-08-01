@@ -1,0 +1,13 @@
+{
+  "source": "CsvLoader",
+  "as_of": "2023-12-01",
+  "mrr": 500.0,
+  "arr": 6000.0,
+  "active_customers": 3,
+  "arpu": 166.67,
+  "mrr_prev_month": 300.0,
+  "mom_mrr_growth_pct": 66.67,
+  "logo_churn_rate_pct": 0.0,
+  "new_customers": 2,
+  "generated_at": "2026-07-24T08:30:21.824546+00:00"
+}

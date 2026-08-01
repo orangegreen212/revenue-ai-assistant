@@ -105,14 +105,14 @@ def chat(req: ChatRequest):
 
     safe_query = sanitize_user_input(req.query)
     db = get_vectorstore()
-    docs = db.similarity_search(safe_query, k=2, filter={"lang": req.lang})
+    docs = db.similarity_search(safe_query, k=3, filter={"lang": req.lang})
     note = None
     if not docs:
         # Filtered retrieval found nothing — most likely chroma_db is empty or
         # predates the "lang" metadata field. Retry without the filter so the
         # user still sees *something* was retrieved, and surface a clear note
         # instead of silently returning zero sources.
-        docs = db.similarity_search(safe_query, k=2)
+        docs = db.similarity_search(safe_query, k=3)
         if docs:
             note = (
                 f"No '{req.lang}' chunks found (index may need 'python ingest.py' "
@@ -207,7 +207,7 @@ Columns:
 Rows:
 {meta['rows']}
 
-When using get_csv_agent or csv_aggregate, use the exact file path above.
+When using get_csv_agent, csv_aggregate, or csv_row_sum, use the exact file path above.
 """
     llm = get_llm()
     with track_request("csv_chat", req.lang, req.query) as log_ctx:

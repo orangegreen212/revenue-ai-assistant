@@ -182,6 +182,61 @@ def csv_aggregate(
 
 
 @tool
+def csv_row_sum(file_path: str, label: str, label_column: Optional[str] = None) -> str:
+    """Sum a row's values across all numeric columns — for "wide" tables where
+    a metric is a ROW LABEL and periods/years are COLUMNS (e.g. financial
+    statements: "Total non-current assets" as a row, with columns like
+    "2025-09-30", "2024-09-30", ...). Use this instead of csv_aggregate
+    whenever the user asks for a total/sum of a named LINE ITEM rather than a
+    named column — csv_aggregate cannot do this because the thing being
+    summed isn't a column, it's a row.
+
+    Args:
+        file_path: path to the CSV.
+        label: the row label to find, e.g. "Total non-current assets"
+            (case-insensitive substring match — doesn't need to be exact).
+        label_column: which column holds the row labels. If omitted, the
+            first column is used (financial-statement exports typically put
+            labels in the first, often-unnamed column).
+    """
+    df, err = _load_csv(file_path)
+    if err:
+        return err
+
+    if df.empty:
+        return "Error: the uploaded CSV has no rows."
+
+    label_col = label_column or df.columns[0]
+    if label_col not in df.columns:
+        return f"Error: label column '{label_col}' not found. Available columns: {list(df.columns)}."
+
+    mask = df[label_col].astype(str).str.contains(label, case=False, na=False, regex=False)
+    matches = df[mask]
+
+    if matches.empty:
+        return (
+            f"Error: no row found where '{label_col}' contains '{label}'. "
+            f"Sample values in that column: {df[label_col].astype(str).head(10).tolist()}"
+        )
+    if len(matches) > 1:
+        row_labels = matches[label_col].astype(str).tolist()
+        return (
+            f"Found {len(matches)} rows matching '{label}': {row_labels}. "
+            f"Be more specific, or call this again with the exact label."
+        )
+
+    row = matches.iloc[0]
+    numeric_cols = [c for c in df.columns if c != label_col and pd.api.types.is_numeric_dtype(df[c])]
+    if not numeric_cols:
+        return f"Error: no numeric columns found to sum for row '{label}'."
+
+    values = row[numeric_cols]
+    total = values.sum(skipna=True)
+    breakdown = ", ".join(f"{c}={values[c]}" for c in numeric_cols)
+    return f"Row '{row[label_col]}': sum across {len(numeric_cols)} columns = {total}\nBreakdown: {breakdown}"
+
+
+@tool
 def get_csv_agent(file_path: str, question: str) -> str:
     """Analyze an uploaded CSV with free-form reasoning for questions that a simple
     aggregate can't answer (e.g. filtering, multi-step logic, comparisons).
