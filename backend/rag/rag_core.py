@@ -1,8 +1,5 @@
-"""RAG + tool-calling core — identical logic to the original Streamlit app,
-just without any Streamlit calls, so it can be used from FastAPI (or anything else).
-"""
-
 import os
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from embeddings import get_embeddings
@@ -18,6 +15,8 @@ from tools.analytics_tools import (
     csv_aggregate,
     csv_row_sum,
     get_live_metric,
+    detect_financial_statement,       # Убедись, что эти функции экспортируются отсюда
+    _infer_financial_statement_args   # Убедись, что эти функции экспортируются отсюда
 )
 
 CHAT_TOOLS = [
@@ -84,12 +83,6 @@ def get_vectorstore():
 def get_llm():
     primary_model = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
 
-    # Optional comma-separated fallback list, e.g.
-    # OPENROUTER_FALLBACK_MODELS=meta-llama/llama-3.3-70b-instruct:free,openai/gpt-4o-mini
-    # OpenRouter tries these in order, within the SAME request, if the primary
-    # model errors or is rate-limited (common on free tiers under load) — this
-    # avoids surfacing a raw 429 to the user just because one free model's
-    # upstream provider is temporarily overloaded.
     fallback_env = os.getenv("OPENROUTER_FALLBACK_MODELS", "")
     fallback_models = [m.strip() for m in fallback_env.split(",") if m.strip()]
 
@@ -121,6 +114,60 @@ def run_chat_with_tools(
             print("[tool-debug]", *args, flush=True)
 
     tool_names = [t.name for t in CHAT_TOOLS]
+    
+    # ------------------------------------------------------------
+    # Deterministic routing for financial statements
+    # ------------------------------------------------------------
+    try:
+        financial_match = re.search(
+            r"file_path\s*[:=]\s*([^\n]+)",
+            context,
+            flags=re.IGNORECASE,
+        )
+
+        if financial_match:
+            file_path = financial_match.group(1).strip()
+
+            if os.path.exists(file_path):
+                import pandas as pd
+
+                if file_path.lower().endswith(".csv"):
+                    df = pd.read_csv(file_path, nrows=50)
+                else:
+                    df = pd.read_excel(file_path, nrows=50)
+
+                if detect_financial_statement(df) is not None:
+                    args = _infer_financial_statement_args(
+                        file_path=file_path,
+                        question=query,
+                    )
+
+                    financial_ops = {
+                        "line_lookup",
+                        "year_lookup",
+                        "year_comparison",
+                        "yoy_growth",
+                        "total_validation",
+                    }
+
+                    if (
+                        args.get("operation") in financial_ops
+                        and (
+                            args.get("line_item")
+                            or args.get("operation") == "total_validation"
+                        )
+                    ):
+                        result = analyze_financial_statement.invoke(args)
+
+                        if result:
+                            return str(result), ["analyze_financial_statement"]
+    except Exception as e:
+        _log("Deterministic routing exception:", repr(e))
+        pass
+
+    # ------------------------------------------------------------
+    # Normal LLM flow
+    # ------------------------------------------------------------
     model_name = (
         getattr(llm, "model_name", None)
         or getattr(llm, "model", None)
@@ -129,7 +176,9 @@ def run_chat_with_tools(
     _log("registered tools:", tool_names)
     _log("model name (config):", model_name)
     _log("bind_tools(CHAT_TOOLS) executing…")
+    
     llm_with_tools = llm.bind_tools(CHAT_TOOLS)
+    
     _log("bind_tools() executed: True; bound type=", type(llm_with_tools).__name__)
     bound_kwargs = getattr(llm_with_tools, "kwargs", None) or {}
     bound_tools = bound_kwargs.get("tools") or []
@@ -181,12 +230,18 @@ def run_chat_with_tools(
                 "is a ROW, not a column header (common in financial statements/wide tables with periods "
                 "as columns) — call csv_row_sum with that label instead. Try csv_row_sum BEFORE "
                 "get_csv_agent whenever the question names a specific line item to total.\n"
-                "For uploaded Balance Sheet / Income Statement / Cash Flow files, prefer "
-                "analyze_financial_statement for line lookup, yearly values, year comparison, "
-                "YoY growth, or validating that a total equals the sum of component lines.\n"
-                "Only use get_csv_agent for what neither csv_aggregate, csv_row_sum, nor "
-                "analyze_financial_statement can express "
-                "(multi-condition filters, comparisons across multiple items, trend/why questions).\n"
+                "For uploaded Balance Sheet, Income Statement, or Cash Flow files:\n"
+                "ALWAYS use analyze_financial_statement for:\n"
+                "- financial line items\n"
+                "- yearly values\n"
+                "- comparisons\n"
+                "- YoY growth\n"
+                "- validation of totals\n"
+                "Never answer these questions from your own knowledge.\n"
+                "Never use csv_row_sum or csv_aggregate for financial statements.\n"
+                "Only use get_csv_agent for questions that cannot be answered by "
+                "analyze_financial_statement, such as summarization, trend explanations, "
+                "multi-condition analysis, or free-form exploration.\n"
                 "If the user asks about OUR/current/actual/right-now company numbers "
                 "(not general SaaS knowledge), call get_live_metric instead of answering "
                 "from the knowledge-base context — it returns real computed data with a "
