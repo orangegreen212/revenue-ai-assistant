@@ -15,8 +15,8 @@ from tools.analytics_tools import (
     csv_aggregate,
     csv_row_sum,
     get_live_metric,
-    detect_financial_statement,       # Убедись, что эти функции экспортируются отсюда
-    _infer_financial_statement_args   # Убедись, что эти функции экспортируются отсюда
+    detect_financial_statement,      
+    _infer_financial_statement_args  
 )
 
 CHAT_TOOLS = [
