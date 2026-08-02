@@ -32,7 +32,7 @@ flowchart TD
     LOAD --> CSV[(CSV data)]
     LOAD --> STRIPE[(Stripe API<br/>test mode)]
 
-    KB[knowledge_base/<br/>metrics · frameworks · sql<br/>industry_references<br/>EN + UK] -.ingest.py.-> VDB
+    KB[knowledge_base/<br/>metrics · frameworks · sql<br/>industry_references<br/>EN + UK] -->|ingest script| VDB
 ```
 
 Frontend and backend are independent services that only talk over a REST
