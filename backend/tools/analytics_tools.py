@@ -242,6 +242,7 @@ def csv_row_sum(file_path: str, label: str, label_column: Optional[str] = None) 
     breakdown_str = ", ".join(breakdown)
     return f"Row '{row[label_col]}': sum across {len(breakdown)} columns = {total}\nBreakdown: {breakdown_str}"
 
+
 @tool
 def get_csv_agent(file_path: str, question: str) -> str:
     """Analyze an uploaded CSV with free-form reasoning for questions that a simple
@@ -279,7 +280,7 @@ def get_csv_agent(file_path: str, question: str) -> str:
     # code-executing pandas agent below.
     if detect_financial_statement(df) is not None:
         return analyze_financial_statement.invoke(
-            __financial_statement_args(file_path, question)
+            _infer_financial_statement_args(file_path, question)
         )
 
     # Lazy import to avoid a circular import (rag_core imports this module's
@@ -1051,6 +1052,8 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     out = out.dropna(axis=1, how="all")
 
     return out.reset_index(drop=True)
+
+
 def _extract_year_number(name: object) -> Optional[int]:
     match = re.search(r"(?:19|20)\d{2}", str(name))
     return int(match.group()) if match else None
@@ -1153,147 +1156,191 @@ def _load_financial_statement(
     return df, statement_type, None
 
 
+KNOWN_ITEMS = [
+    "Total Revenue",
+    "Operating Revenue",
+    "Cost of Revenue",
+    "Cost of Sales",
+    "Net Income",
+    "Net Loss",
+    "Operating Income",
+    "Operating Expenses",
+    "Gross Profit",
+    "Gross Margin",
+    "Revenue",
+    "EBITDA",
+    "EBIT",
+    "Total Assets",
+    "Current Assets",
+    "Non-current Assets",
+    "Fixed Assets",
+    "Total Liabilities",
+    "Current Liabilities",
+    "Non-current Liabilities",
+    "Shareholders' Equity",
+    "Total Equity",
+    "Cash and Cash Equivalents",
+    "Operating Cash Flow",
+    "Free Cash Flow"
+]
+
 def _infer_financial_statement_args(file_path: str, question: str) -> dict:
-    """
-    Infer arguments for analyze_financial_statement() from a natural-language question.
-
-    Supported operations:
-      - line_lookup
-      - year_lookup
-      - year_comparison
-      - yoy_growth
-      - total_validation
-    """
-
-    q = " ".join(question.strip().split())
+    """Map a free-form question to analyze_financial_statement invoke args."""
+    q = (question or "").strip()
     q_lower = q.lower()
-
     years = re.findall(r"(?:19|20)\d{2}", q)
 
-    args = {
-        "file_path": file_path,
-        "operation": "line_lookup",
-        "line_item": "",
-        "year": None,
-        "year_a": None,
-        "year_b": None,
-        "left_item": None,
-        "right_item": None,
-        "total_item": None,
-    }
+    args: dict = {"file_path": file_path}
 
-    # ----------------------------------------------------------
-    # Determine operation
-    # ----------------------------------------------------------
-
-    if any(k in q_lower for k in (
-        "yoy",
-        "year over year",
-        "year-over-year",
-        "growth"
-    )):
+    # 1. Determine Operation
+    if any(
+        k in q_lower
+        for k in (
+            "yoy",
+            "year over year",
+            "year-over-year",
+            "growth rate",
+            "% growth",
+            "percent growth",
+            "percentage growth",
+        )
+    ):
         args["operation"] = "yoy_growth"
-
-    elif any(k in q_lower for k in (
-        "compare",
-        "comparison",
-        "versus",
-        " vs ",
-        "difference between"
-    )):
+    elif any(
+        k in q_lower
+        for k in (
+            "compar",
+            " versus ",
+            " vs ",
+            " vs.",
+            "difference between",
+            "change from",
+            "changed from",
+        )
+    ):
         args["operation"] = "year_comparison"
-
-    elif any(k in q_lower for k in (
-        "equal",
-        "equals",
-        "sum of",
-        "plus",
-        "+"
-    )):
+    elif any(
+        k in q_lower
+        for k in (
+            "validat",
+            "tie out",
+            "tie-out",
+            "adds up",
+            "add up",
+            "sum to",
+            "sum of",
+            "reconcile",
+            "equal the total",
+            "equals the total",
+            "plus",
+            "+",
+        )
+    ) or re.search(r"\bequals?\b", q_lower):
         args["operation"] = "total_validation"
+    elif years and any(
+        k in q_lower
+        for k in ("yearly", "by year", "for year", "in year", "value in", "value for")
+    ):
+        args["operation"] = "yearly_values"
+    else:
+        args["operation"] = "line_lookup"
 
-    elif len(years) == 1:
-        args["operation"] = "year_lookup"
-
-    # ----------------------------------------------------------
-    # Years
-    # ----------------------------------------------------------
-
-    if len(years) == 1:
-        args["year"] = years[0]
-
-    elif len(years) >= 2:
+    # Year assignment
+    if len(years) >= 2:
         args["year_a"] = years[0]
         args["year_b"] = years[1]
+        if args["operation"] == "line_lookup":
+            args["operation"] = "year_comparison"
+    elif len(years) == 1:
+        args["year"] = years[0]
+        if args["operation"] == "line_lookup":
+            args["operation"] = "yearly_values"
 
-    # ----------------------------------------------------------
-    # Total validation
-    # ----------------------------------------------------------
-
+    # 2. Extract arguments for total_validation
     if args["operation"] == "total_validation":
-
-        m = re.search(
-            r"(.+?)\s+(?:plus|\+)\s+(.+?)\s+(?:equal|equals?)\s+(.+)",
+        sum_of = re.search(
+            r"sum of\s+(.+?)(?:\s+(?:equal|equals|match(?:es)?|to)\b|$)",
             q,
-            flags=re.I,
+            flags=re.IGNORECASE,
+        )
+        plus_parts = re.search(
+            r"(.+?)\s*=\s*(.+)$",
+            q,
+        )
+        plus_natural = re.search(
+            r"(?:does|do)?\s*(.+?)(?:\s*\+\s*|\s+plus\s+)(.+?)\s+(?:equal|equals|are|is|to)\s+(.+)$",
+            q,
+            flags=re.IGNORECASE
         )
 
-        if m:
-            args["left_item"] = m.group(1).strip()
-            args["right_item"] = m.group(2).strip()
-            args["total_item"] = m.group(3).strip()
+        if sum_of:
+            args["component_lines"] = sum_of.group(1).strip(" .,;:?")
+            total_m = re.search(
+                r"(?:equal|equals|match(?:es)?|to)\s+(.+)$",
+                q,
+                flags=re.IGNORECASE,
+            )
+            if total_m:
+                args["total_line"] = total_m.group(1).strip(" .,;:?")
+        
+        elif plus_natural:
+            left, right, total_part = plus_natural.groups()
+            args["component_lines"] = f"{left.strip()}, {right.strip()}"
+            
+            # Clean trailing year/fluff from the total part
+            tot = total_part.strip(" ?.,;:\"'")
+            for y in years:
+                tot = re.sub(rf"\b(?:in\s+)?{y}\b", "", tot, flags=re.IGNORECASE).strip()
+            args["total_line"] = tot
 
-            for fld in ("left_item", "right_item", "total_item"):
-                args[fld] = re.sub(
-                    r"\b(?:in|for|during)\s+(?:19|20)\d{2}\b",
-                    "",
-                    args[fld],
-                    flags=re.I,
-                ).strip()
+        elif plus_parts and ("+" in plus_parts.group(1) or "+" in plus_parts.group(2)):
+            left, right = plus_parts.group(1).strip(), plus_parts.group(2).strip()
+            if "+" in left:
+                args["component_lines"] = left.replace("+", ",")
+                args["total_line"] = right
+            else:
+                args["component_lines"] = right.replace("+", ",")
+                args["total_line"] = left
 
-        return args
+    # 3. Derive a line_item label
+    # Step A: Priority matching with KNOWN_ITEMS
+    found_item = None
+    for item in sorted(KNOWN_ITEMS, key=len, reverse=True):
+        if item.lower() in q_lower:
+            found_item = item
+            break
 
-    # ----------------------------------------------------------
-    # Remove years only
-    # ----------------------------------------------------------
-
-    text = re.sub(r"(?:19|20)\d{2}", "", q)
-
-    # ----------------------------------------------------------
-    # Remove operation phrases
-    # ----------------------------------------------------------
-
-    prefixes = [
-        r"^what is\s+",
-        r"^what are\s+",
-        r"^show\s+",
-        r"^give me\s+",
-        r"^calculate\s+",
-        r"^compare\s+",
-        r"^comparison of\s+",
-        r"^difference between\s+",
-    ]
-
-    for p in prefixes:
-        text = re.sub(p, "", text, flags=re.I)
-
-    text = re.sub(
-        r"\b(yoy|year[- ]over[- ]year|growth|compare|comparison|between|and|vs|versus)\b",
-        " ",
-        text,
-        flags=re.I,
-    )
-
-    text = re.sub(
-        r"\b(in|for|of|during|from|to)\b",
-        " ",
-        text,
-        flags=re.I,
-    )
-
-    text = re.sub(r"\s+", " ", text).strip(" ?.")
-
-    args["line_item"] = text
+    if found_item and args["operation"] != "total_validation":
+        args["line_item"] = found_item
+    elif found_item and "total_line" not in args:
+        args["line_item"] = found_item
+    else:
+        # Step B: Fallback string cleaning (fluff removal)
+        line_item = q
+        for y in years:
+            line_item = re.sub(rf"\b{y}\b", " ", line_item)
+        
+        fluff = [
+            r"\byoy\b", r"\byear[- ]over[- ]year\b", r"\bgrowth(?:\s+rate)?\b",
+            r"\bpercent(?:age)?\s+growth\b", r"\bcompar(?:e|ison|ing)?\b", r"\bversus\b",
+            r"\bvs\.?\b", r"\bdifference between\b", r"\bchange(?:d)? from\b",
+            r"\bvalidat(?:e|ion|ing)?\b", r"\btie[- ]?out\b", r"\breconcile\b",
+            r"\byearly values?\b", r"\bby year\b", r"\bfor year\b", r"\bin year\b",
+            r"\bvalue(?:s)? (?:in|for|of)\b", r"\bwhat (?:is|was|are|were)\b",
+            r"\bshow(?: me)?\b", r"\bfind\b", r"\blook ?up\b", r"\bget\b", r"\bthe\b",
+            r"\bplease\b", r"\bhow much\b", r"\bfrom\b", r"\bto\b", r"\bin\b", r"\bfor\b",
+            r"\bbetween\b", r"\bdoes\b", r"\bdo\b"
+        ]
+        
+        for pattern in fluff:
+            line_item = re.sub(pattern, " ", line_item, flags=re.IGNORECASE)
+            
+        line_item = " ".join(line_item.split()).strip(" ?.,:;\"'`")
+        
+        if line_item and args["operation"] != "total_validation":
+            args["line_item"] = line_item
+        elif line_item and "total_line" not in args:
+            args["line_item"] = line_item
 
     return args
 
@@ -1563,4 +1610,3 @@ def analyze_financial_statement(
         )
     except Exception as exc:  # noqa: BLE001
         return f"Error analyzing financial statement: {exc}"
-
