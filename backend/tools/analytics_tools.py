@@ -840,101 +840,217 @@ def _parse_accounting_number(value) -> object:
 
 
 def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
-    """Clean a financial-statement Excel/CSV export into an analysis-ready frame.
+    """Normalize Excel/CSV financial statements into a clean analysis-ready table."""
 
-    Steps:
-    - drop fully empty rows and columns
-    - rename leading ``Unnamed`` columns to a row-label column (``Item``)
-    - drop remaining empty ``Unnamed`` columns
-    - preserve the row-label column as text
-    - coerce accounting-formatted numbers in value columns to numeric
-    """
     if df is None or not isinstance(df, pd.DataFrame):
         raise TypeError("normalize_financial_dataframe expects a pandas DataFrame")
 
     out = df.copy()
+    out = out.dropna(axis=0, how="all").dropna(axis=1, how="all")
 
-    # Drop completely empty rows/columns first so Unnamed handling sees real data.
-    out = out.dropna(how="all").dropna(axis=1, how="all")
     if out.empty:
         return out
 
-    columns = list(out.columns)
-    renamed = {}
-    drop_cols = []
+    scan = out.fillna("").astype(str)
+    year_regex = re.compile(r"(?:19|20)\d{2}")
 
-    for i, col in enumerate(columns):
-        col_str = str(col)
-        is_unnamed = col_str.startswith("Unnamed") or col_str.strip() == ""
+    def _count_years(values) -> int:
+        return sum(bool(year_regex.search(str(v))) for v in values)
 
-        if not is_unnamed:
+    # -------------------------------------------------------------
+    # Find the BEST header row (years + descriptive text)
+    # -------------------------------------------------------------
+    header_row = None
+    best_score = -1
+
+    for idx in range(len(scan)):
+        row = scan.iloc[idx]
+
+        years = _count_years(row)
+
+        if years < 2:
             continue
 
-        series = out.iloc[:, i]
-        non_null = series.dropna()
-        # First Unnamed column with mostly text → row labels.
-        if i == 0 or (
-            len(non_null) > 0
-            and non_null.map(lambda v: isinstance(v, str)).mean() >= 0.5
-            and "Item" not in renamed.values()
-        ):
-            if "Item" not in renamed.values():
-                renamed[col] = "Item"
+        text = sum(
+            bool(str(v).strip()) and not year_regex.search(str(v))
+            for v in row
+        )
+
+        score = years * 10 + text
+
+        if score > best_score:
+            best_score = score
+            header_row = idx
+
+    # -------------------------------------------------------------
+    # Excel-style statement
+    # -------------------------------------------------------------
+    if header_row is not None:
+
+        header = scan.iloc[header_row].tolist()
+
+        new_columns = []
+        seen_years = {}
+
+        for i, value in enumerate(header):
+            value = str(value).strip()
+
+            m = year_regex.search(value)
+
+            if m:
+                year = m.group()
+
+                if year in seen_years:
+                    seen_years[year] += 1
+                    year = f"{year}_{seen_years[year]}"
+                else:
+                    seen_years[year] = 0
+
+                new_columns.append(year)
+
+            else:
+                if i == 0:
+                    new_columns.append("Item")
+                elif value:
+                    new_columns.append(value)
+                else:
+                    new_columns.append(f"Column_{i}")
+
+        out = out.iloc[header_row + 1 :].reset_index(drop=True)
+        out.columns = new_columns
+
+    # -------------------------------------------------------------
+    # Original CSV logic (unchanged)
+    # -------------------------------------------------------------
+    else:
+
+        columns = list(out.columns)
+        renamed = {}
+        drop_cols = []
+
+        for i, col in enumerate(columns):
+
+            col_str = str(col)
+            is_unnamed = col_str.startswith("Unnamed") or col_str.strip() == ""
+
+            if not is_unnamed:
                 continue
 
-        # Other Unnamed columns that are entirely empty after strip → drop.
-        if non_null.empty or non_null.astype(str).str.strip().eq("").all():
-            drop_cols.append(col)
-        else:
-            # Keep data columns but give them a stable name.
-            renamed[col] = f"Column_{i}"
+            series = out.iloc[:, i]
+            non_null = series.dropna()
 
-    if renamed:
-        out = out.rename(columns=renamed)
-    if drop_cols:
-        out = out.drop(columns=[c for c in drop_cols if c in out.columns], errors="ignore")
+            if (
+                i == 0
+                or (
+                    len(non_null) > 0
+                    and non_null.map(lambda v: isinstance(v, str)).mean() >= 0.5
+                    and "Item" not in renamed.values()
+                )
+            ):
+                if "Item" not in renamed.values():
+                    renamed[col] = "Item"
+                    continue
 
-    out = out.dropna(how="all").dropna(axis=1, how="all")
-    if out.empty:
-        return out.reset_index(drop=True)
+            if non_null.empty or non_null.astype(str).str.strip().eq("").all():
+                drop_cols.append(col)
+            else:
+                renamed[col] = f"Column_{i}"
 
-    # Ensure a dedicated label column exists and stays textual.
-    label_col = "Item" if "Item" in out.columns else out.columns[0]
-    if label_col != "Item":
-        out = out.rename(columns={label_col: "Item"})
-        label_col = "Item"
+        if renamed:
+            out = out.rename(columns=renamed)
 
-    out[label_col] = out[label_col].apply(
-        lambda v: pd.NA if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v).strip()
+        if drop_cols:
+            out = out.drop(
+                columns=[c for c in drop_cols if c in out.columns],
+                errors="ignore",
+            )
+
+    # -------------------------------------------------------------
+    # Ensure Item column exists
+    # -------------------------------------------------------------
+    if "Item" not in out.columns:
+        out = out.rename(columns={out.columns[0]: "Item"})
+
+    out = out.dropna(axis=1, how="all")
+
+    # -------------------------------------------------------------
+    # Remove obvious title / subtitle rows
+    # -------------------------------------------------------------
+    skip_patterns = [
+        r"^\s*$",
+        r"^\(?(?:amounts?\s+)?in\s+millions?.*$",
+        r"^\(?(?:amounts?\s+)?in\s+thousands?.*$",
+        r"^\(?(?:amounts?\s+)?in\s+billions?.*$",
+        r"^unaudited$",
+        r"^see accompanying",
+        r"^the accompanying",
+        r"^consolidated balance sheets?$",
+        r"^consolidated statements?",
+        r"^statement of financial position$",
+        r"^statement of operations$",
+        r"^income statement$",
+        r"^cash flows?$",
+        r"^statement of cash flows?$",
+    ]
+
+    keep_rows = []
+
+    for idx, row in out.iterrows():
+
+        label = str(row["Item"]).strip()
+
+        if not label:
+            continue
+
+        lower = label.lower()
+
+        if any(re.search(pattern, lower) for pattern in skip_patterns):
+            continue
+
+        if year_regex.fullmatch(label):
+            continue
+
+        numeric_found = False
+
+        for col in out.columns[1:]:
+
+            parsed = _parse_accounting_number(row[col])
+
+            if isinstance(parsed, (int, float)) and not pd.isna(parsed):
+                numeric_found = True
+                break
+
+        if numeric_found or label:
+            keep_rows.append(idx)
+
+    out = out.loc[keep_rows].reset_index(drop=True)
+
+    # -------------------------------------------------------------
+    # Clean Item labels
+    # -------------------------------------------------------------
+    out["Item"] = (
+        out["Item"]
+        .astype(str)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.replace(r"[.\u2024\u2026]+$", "", regex=True)
+        .str.strip()
     )
 
-    # Drop rows where the label is blank and every other cell is empty.
-    value_cols = [c for c in out.columns if c != label_col]
-    if value_cols:
-        blank_label = out[label_col].isna() | (out[label_col].astype(str).str.strip() == "")
-        blank_values = out[value_cols].isna().all(axis=1) | (
-            out[value_cols].astype(str).apply(
-                lambda col: col.str.strip().isin({"", "nan", "None", "NaN"})
-            ).all(axis=1)
-        )
-        out = out.loc[~(blank_label & blank_values)]
+    # -------------------------------------------------------------
+    # Convert accounting numbers
+    # -------------------------------------------------------------
+    for col in out.columns:
 
-    for col in value_cols:
-        if col not in out.columns:
+        if col == "Item":
             continue
+
         parsed = out[col].map(_parse_accounting_number)
-        # Promote to numeric when most non-null values parsed successfully.
-        non_null = parsed.dropna()
-        if len(non_null) == 0:
-            continue
-        numeric_mask = non_null.map(lambda v: isinstance(v, (int, float)) and not isinstance(v, bool))
-        if numeric_mask.mean() >= 0.5:
-            out[col] = pd.to_numeric(parsed, errors="coerce")
+        out[col] = pd.to_numeric(parsed, errors="coerce")
 
-    out = out.dropna(how="all").dropna(axis=1, how="all")
+    out = out.dropna(axis=0, how="all")
+    out = out.dropna(axis=1, how="all")
+
     return out.reset_index(drop=True)
-
-
 def _extract_year_number(name: object) -> Optional[int]:
     match = re.search(r"(?:19|20)\d{2}", str(name))
     return int(match.group()) if match else None
