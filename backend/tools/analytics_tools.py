@@ -279,7 +279,7 @@ def get_csv_agent(file_path: str, question: str) -> str:
     # code-executing pandas agent below.
     if detect_financial_statement(df) is not None:
         return analyze_financial_statement.invoke(
-            _infer_financial_statement_args(file_path, question)
+            __financial_statement_args(file_path, question)
         )
 
     # Lazy import to avoid a circular import (rag_core imports this module's
@@ -1154,148 +1154,146 @@ def _load_financial_statement(
 
 
 def _infer_financial_statement_args(file_path: str, question: str) -> dict:
-    """Map a free-form question to analyze_financial_statement invoke args."""
-    q = (question or "").strip()
+    """
+    Infer arguments for analyze_financial_statement() from a natural-language question.
+
+    Supported operations:
+      - line_lookup
+      - year_lookup
+      - year_comparison
+      - yoy_growth
+      - total_validation
+    """
+
+    q = " ".join(question.strip().split())
     q_lower = q.lower()
+
     years = re.findall(r"(?:19|20)\d{2}", q)
 
-    args: dict = {"file_path": file_path}
+    args = {
+        "file_path": file_path,
+        "operation": "line_lookup",
+        "line_item": "",
+        "year": None,
+        "year_a": None,
+        "year_b": None,
+        "left_item": None,
+        "right_item": None,
+        "total_item": None,
+    }
 
-    if any(
-        k in q_lower
-        for k in (
-            "yoy",
-            "year over year",
-            "year-over-year",
-            "growth rate",
-            "% growth",
-            "percent growth",
-            "percentage growth",
-        )
-    ):
+    # ----------------------------------------------------------
+    # Determine operation
+    # ----------------------------------------------------------
+
+    if any(k in q_lower for k in (
+        "yoy",
+        "year over year",
+        "year-over-year",
+        "growth"
+    )):
         args["operation"] = "yoy_growth"
-    elif any(
-        k in q_lower
-        for k in (
-            "compar",
-            " versus ",
-            " vs ",
-            " vs.",
-            "difference between",
-            "change from",
-            "changed from",
-        )
-    ):
-        args["operation"] = "year_comparison"
-    elif any(
-        k in q_lower
-        for k in (
-            "validat",
-            "tie out",
-            "tie-out",
-            "adds up",
-            "add up",
-            "sum to",
-            "sum of",
-            "reconcile",
-            "equal the total",
-            "equals the total",
-        )
-    ):
-        args["operation"] = "total_validation"
-    elif years and any(
-        k in q_lower
-        for k in ("yearly", "by year", "for year", "in year", "value in", "value for", " in ", " for ")
-    ):
-        args["operation"] = "yearly_values"
-    else:
-        args["operation"] = "line_lookup"
 
-    if len(years) >= 2:
+    elif any(k in q_lower for k in (
+        "compare",
+        "comparison",
+        "versus",
+        " vs ",
+        "difference between"
+    )):
+        args["operation"] = "year_comparison"
+
+    elif any(k in q_lower for k in (
+        "equal",
+        "equals",
+        "sum of",
+        "plus",
+        "+"
+    )):
+        args["operation"] = "total_validation"
+
+    elif len(years) == 1:
+        args["operation"] = "year_lookup"
+
+    # ----------------------------------------------------------
+    # Years
+    # ----------------------------------------------------------
+
+    if len(years) == 1:
+        args["year"] = years[0]
+
+    elif len(years) >= 2:
         args["year_a"] = years[0]
         args["year_b"] = years[1]
-        if args["operation"] == "line_lookup":
-            args["operation"] = "year_comparison"
-    elif len(years) == 1:
-        args["year"] = years[0]
-        if args["operation"] == "line_lookup":
-            args["operation"] = "yearly_values"
 
-    # total_validation: try "sum of A, B, C" / "A + B + C" vs a total phrase
+    # ----------------------------------------------------------
+    # Total validation
+    # ----------------------------------------------------------
+
     if args["operation"] == "total_validation":
-        sum_of = re.search(
-            r"sum of\s+(.+?)(?:\s+(?:equal|equals|match(?:es)?|to)\b|$)",
-            q,
-            flags=re.IGNORECASE,
-        )
-        plus_parts = re.search(
-            r"(.+?)\s*=\s*(.+)$",
-            q,
-        )
-        if sum_of:
-            args["component_lines"] = sum_of.group(1).strip(" .,;:?")
-            # total often appears after "equal(s)" / "to"
-            total_m = re.search(
-                r"(?:equal|equals|match(?:es)?|to)\s+(.+)$",
-                q,
-                flags=re.IGNORECASE,
-            )
-            if total_m:
-                args["total_line"] = total_m.group(1).strip(" .,;:?")
-        elif plus_parts and ("+" in plus_parts.group(1) or "+" in plus_parts.group(2)):
-            left, right = plus_parts.group(1).strip(), plus_parts.group(2).strip()
-            if "+" in left:
-                args["component_lines"] = left.replace("+", ",")
-                args["total_line"] = right
-            else:
-                args["component_lines"] = right.replace("+", ",")
-                args["total_line"] = left
 
-    # Derive a line_item label from the remaining question text.
-    line_item = q
-    for y in years:
-        line_item = re.sub(rf"\b{y}\b", " ", line_item)
-    fluff = [
-        r"\byoy\b",
-        r"\byear[- ]over[- ]year\b",
-        r"\bgrowth(?:\s+rate)?\b",
-        r"\bpercent(?:age)?\s+growth\b",
-        r"\bcompar(?:e|ison|ing)?\b",
-        r"\bversus\b",
-        r"\bvs\.?\b",
-        r"\bdifference between\b",
-        r"\bchange(?:d)? from\b",
-        r"\bvalidat(?:e|ion|ing)?\b",
-        r"\btie[- ]?out\b",
-        r"\breconcile\b",
-        r"\byearly values?\b",
-        r"\bby year\b",
-        r"\bfor year\b",
-        r"\bin year\b",
-        r"\bvalue(?:s)? (?:in|for|of)\b",
-        r"\bwhat (?:is|was|are|were)\b",
-        r"\bshow(?: me)?\b",
-        r"\bfind\b",
-        r"\blook ?up\b",
-        r"\bget\b",
-        r"\bthe\b",
-        r"\bplease\b",
-        r"\bhow much\b",
-        r"\bfrom\b",
-        r"\bto\b",
-        r"\bin\b",
-        r"\bfor\b",
-        r"\bof\b",
-        r"\band\b",
-        r"\bbetween\b",
+        m = re.search(
+            r"(.+?)\s+(?:plus|\+)\s+(.+?)\s+(?:equal|equals?)\s+(.+)",
+            q,
+            flags=re.I,
+        )
+
+        if m:
+            args["left_item"] = m.group(1).strip()
+            args["right_item"] = m.group(2).strip()
+            args["total_item"] = m.group(3).strip()
+
+            for fld in ("left_item", "right_item", "total_item"):
+                args[fld] = re.sub(
+                    r"\b(?:in|for|during)\s+(?:19|20)\d{2}\b",
+                    "",
+                    args[fld],
+                    flags=re.I,
+                ).strip()
+
+        return args
+
+    # ----------------------------------------------------------
+    # Remove years only
+    # ----------------------------------------------------------
+
+    text = re.sub(r"(?:19|20)\d{2}", "", q)
+
+    # ----------------------------------------------------------
+    # Remove operation phrases
+    # ----------------------------------------------------------
+
+    prefixes = [
+        r"^what is\s+",
+        r"^what are\s+",
+        r"^show\s+",
+        r"^give me\s+",
+        r"^calculate\s+",
+        r"^compare\s+",
+        r"^comparison of\s+",
+        r"^difference between\s+",
     ]
-    for pattern in fluff:
-        line_item = re.sub(pattern, " ", line_item, flags=re.IGNORECASE)
-    line_item = " ".join(line_item.split()).strip(" ?.,:;\"'`")
-    if line_item and args["operation"] != "total_validation":
-        args["line_item"] = line_item
-    elif line_item and "total_line" not in args:
-        args["line_item"] = line_item
+
+    for p in prefixes:
+        text = re.sub(p, "", text, flags=re.I)
+
+    text = re.sub(
+        r"\b(yoy|year[- ]over[- ]year|growth|compare|comparison|between|and|vs|versus)\b",
+        " ",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(
+        r"\b(in|for|of|during|from|to)\b",
+        " ",
+        text,
+        flags=re.I,
+    )
+
+    text = re.sub(r"\s+", " ", text).strip(" ?.")
+
+    args["line_item"] = text
 
     return args
 
