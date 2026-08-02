@@ -258,11 +258,6 @@ def get_csv_agent(file_path: str, question: str) -> str:
     if df.empty:
         return "Error: the uploaded CSV has no rows."
 
-    # Defense in depth: has_prompt_injection() already guards the user's typed
-    # question, but the CSV's own cell values are also fed to an LLM that can
-    # execute code (allow_dangerous_code=True below). Scan cell text for the
-    # same injection markers so a malicious *file* can't smuggle instructions
-    # in through the data instead of the chat box.
     from rag.rag_core import has_prompt_injection
 
     sample_text = " ".join(
@@ -275,28 +270,14 @@ def get_csv_agent(file_path: str, question: str) -> str:
             "agent. Try csv_aggregate instead, or clean the file and re-upload."
         )
 
-    # Financial statements are handled by the dedicated analyzer (line lookup,
-    # yearly values, comparisons, YoY, total validation) instead of the
-    # code-executing pandas agent below.
     if detect_financial_statement(df) is not None:
         return analyze_financial_statement.invoke(
             _infer_financial_statement_args(file_path, question)
         )
 
-    # Lazy import to avoid a circular import (rag_core imports this module's
-    # tools) — reuses the same LLM config as the main chat flow instead of
-    # duplicating ChatOpenAI instantiation with different parameters here.
     from rag.rag_core import get_llm
-
     llm = get_llm()
 
-    # SECURITY NOTE: allow_dangerous_code=True lets the agent execute LLM-generated
-    # Python via pandas' eval/exec internally. This is a known, named trade-off in
-    # LangChain (hence the flag's name) — acceptable for a course project running
-    # in an isolated container with no persistent secrets in the runtime, but NOT
-    # something to enable as-is against untrusted multi-tenant production traffic
-    # without a real sandboxed execution environment (e.g. gVisor, a locked-down
-    # subprocess, or a separate worker with no filesystem/network access).
     agent = create_pandas_dataframe_agent(
         llm,
         df,
@@ -308,7 +289,7 @@ def get_csv_agent(file_path: str, question: str) -> str:
     try:
         result = agent.invoke({"input": question})
         return str(result.get("output", result))
-    except Exception as exc:  # noqa: BLE001 — surface the error to the caller
+    except Exception as exc:  # noqa: BLE001
         return f"Error analyzing CSV: {exc}"
 
 
@@ -470,7 +451,7 @@ def calculate_kpi(
             return f"Unsupported kpi_name '{kpi_name}'. Supported: {supported}."
 
         return detail
-    except Exception as exc:  # noqa: BLE001 — tool should return errors to the agent
+    except Exception as exc:  # noqa: BLE001
         if uk:
             return f"Помилка розрахунку KPI '{kpi_name}': {exc}"
         return f"Error calculating KPI '{kpi_name}': {exc}"
@@ -684,7 +665,6 @@ def get_live_metric(metric_name: str, lang: str = "en") -> str:
             mom_mrr_growth_pct, logo_churn_rate_pct.
         lang: "en" or "uk".
     """
-    # Imported lazily to avoid a hard dependency for callers that never use this tool.
     from metrics.snapshot_service import read_snapshot
 
     snap = read_snapshot()
@@ -840,6 +820,38 @@ def _parse_accounting_number(value) -> object:
         return value
 
 
+def _extract_year_number(name: object) -> Optional[int]:
+    """Extract a valid year from a string, strictly distinguishing from financial amounts."""
+    if name is None or pd.isna(name):
+        return None
+    
+    s = str(name).strip()
+    
+    # 1. Check if the string is just a numeric value (likely an amount, not a header year).
+    # Ignore values outside 1950-2050 to prevent treating "$2096.00" as the year 2096.
+    clean_num = s.replace(",", "").replace("$", "").replace(" ", "")
+    try:
+        val = float(clean_num)
+        # If it's perfectly an integer in the year range, it might actually be a year
+        if val.is_integer() and 1950 <= val <= 2050:
+            return int(val)
+        # If it's any other number (e.g. 2096.0), it's financial data, NOT a year header
+        if val > 1000 or val < -1000:
+            return None
+    except ValueError:
+        pass
+
+    # 2. It's a string like "2024-09-30", "FY2024", etc. Look for 4 digits.
+    # Using negative lookbehind/lookahead to avoid matching mid-decimal (e.g. 1.2024)
+    match = re.search(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)", s)
+    if match:
+        y = int(match.group(1))
+        if 1950 <= y <= 2050:
+            return y
+
+    return None
+
+
 def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     """Normalize Excel/CSV financial statements into a clean analysis-ready table."""
 
@@ -853,10 +865,9 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
         return out
 
     scan = out.fillna("").astype(str)
-    year_regex = re.compile(r"(?:19|20)\d{2}")
 
     def _count_years(values) -> int:
-        return sum(bool(year_regex.search(str(v))) for v in values)
+        return sum(1 for v in values if _extract_year_number(v) is not None)
 
     # -------------------------------------------------------------
     # Find the BEST header row (years + descriptive text)
@@ -873,7 +884,7 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
             continue
 
         text = sum(
-            bool(str(v).strip()) and not year_regex.search(str(v))
+            bool(str(v).strip()) and _extract_year_number(v) is None
             for v in row
         )
 
@@ -896,18 +907,18 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
         for i, value in enumerate(header):
             value = str(value).strip()
 
-            m = year_regex.search(value)
+            year_val = _extract_year_number(value)
 
-            if m:
-                year = m.group()
+            if year_val is not None:
+                year_str = str(year_val)
 
-                if year in seen_years:
-                    seen_years[year] += 1
-                    year = f"{year}_{seen_years[year]}"
+                if year_str in seen_years:
+                    seen_years[year_str] += 1
+                    year_str = f"{year_str}_{seen_years[year_str]}"
                 else:
-                    seen_years[year] = 0
+                    seen_years[year_str] = 0
 
-                new_columns.append(year)
+                new_columns.append(year_str)
 
             else:
                 if i == 0:
@@ -924,13 +935,11 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     # Original CSV logic (unchanged)
     # -------------------------------------------------------------
     else:
-
         columns = list(out.columns)
         renamed = {}
         drop_cols = []
 
         for i, col in enumerate(columns):
-
             col_str = str(col)
             is_unnamed = col_str.startswith("Unnamed") or col_str.strip() == ""
 
@@ -997,7 +1006,6 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     keep_rows = []
 
     for idx, row in out.iterrows():
-
         label = str(row["Item"]).strip()
 
         if not label:
@@ -1008,13 +1016,12 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
         if any(re.search(pattern, lower) for pattern in skip_patterns):
             continue
 
-        if year_regex.fullmatch(label):
+        if _extract_year_number(label) is not None and len(re.sub(r"\d+", "", label)) < 3:
             continue
 
         numeric_found = False
 
         for col in out.columns[1:]:
-
             parsed = _parse_accounting_number(row[col])
 
             if isinstance(parsed, (int, float)) and not pd.isna(parsed):
@@ -1041,7 +1048,6 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     # Convert accounting numbers
     # -------------------------------------------------------------
     for col in out.columns:
-
         if col == "Item":
             continue
 
@@ -1052,11 +1058,6 @@ def normalize_financial_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     out = out.dropna(axis=1, how="all")
 
     return out.reset_index(drop=True)
-
-
-def _extract_year_number(name: object) -> Optional[int]:
-    match = re.search(r"(?:19|20)\d{2}", str(name))
-    return int(match.group()) if match else None
 
 
 def _year_columns(df: "pd.DataFrame", label_col: str = "Item") -> list:
@@ -1184,6 +1185,7 @@ KNOWN_ITEMS = [
     "Free Cash Flow"
 ]
 
+
 def _infer_financial_statement_args(file_path: str, question: str) -> dict:
     """Map a free-form question to analyze_financial_statement invoke args."""
     q = (question or "").strip()
@@ -1287,7 +1289,6 @@ def _infer_financial_statement_args(file_path: str, question: str) -> dict:
             left, right, total_part = plus_natural.groups()
             args["component_lines"] = f"{left.strip()}, {right.strip()}"
             
-            # Clean trailing year/fluff from the total part
             tot = total_part.strip(" ?.,;:\"'")
             for y in years:
                 tot = re.sub(rf"\b(?:in\s+)?{y}\b", "", tot, flags=re.IGNORECASE).strip()
@@ -1303,7 +1304,6 @@ def _infer_financial_statement_args(file_path: str, question: str) -> dict:
                 args["total_line"] = left
 
     # 3. Derive a line_item label
-    # Step A: Priority matching with KNOWN_ITEMS
     found_item = None
     for item in sorted(KNOWN_ITEMS, key=len, reverse=True):
         if item.lower() in q_lower:
@@ -1315,7 +1315,6 @@ def _infer_financial_statement_args(file_path: str, question: str) -> dict:
     elif found_item and "total_line" not in args:
         args["line_item"] = found_item
     else:
-        # Step B: Fallback string cleaning (fluff removal)
         line_item = q
         for y in years:
             line_item = re.sub(rf"\b{y}\b", " ", line_item)
@@ -1358,9 +1357,9 @@ def analyze_financial_statement(
 ) -> str:
     """Analyze an uploaded Balance Sheet, Income Statement, or Cash Flow CSV.
 
-    Prefer this over get_csv_agent / csv_row_sum for financial-statement questions
-    about a specific line item, period values, year comparisons, YoY growth, or
-    checking whether a total equals the sum of its components.
+    Prefer this over get_csv_agent / csv_row_sum for ANY financial-statement questions 
+    about specific line items (e.g., "Net Income", "EBITDA", "EBIT", "Gross Profit", "Revenue", "Total Assets"), 
+    period values, year comparisons, YoY growth, or checking whether a total equals the sum of its components.
 
     Args:
         file_path: path to the uploaded CSV (same path used by other CSV tools).
@@ -1566,7 +1565,7 @@ def analyze_financial_statement(
                 + f"Total validation: '{total_row[label_col]}' vs sum of "
                 + f"{[r[label_col] for r in component_rows]}"
             ]
-            # Relative tolerance for floating/rounding differences in exports.
+            
             abs_tol = 0.01
             rel_tol = 0.001
 
