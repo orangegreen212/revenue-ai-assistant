@@ -106,8 +106,10 @@ def run_chat_with_tools(
 ) -> tuple[str, list[str]]:
     """Returns (answer, tools_used) — tools_used is the list of tool names
     the model actually called, in order, for logging/monitoring."""
-    # TEMP DEBUG: tool-calling pipeline — remove after root-cause confirmed.
-    _dbg = os.getenv("DEBUG_TOOL_CALLING", "1") == "1"
+    # Verbose per-request tool-calling trace (model name, tool_calls, raw
+    # responses). Useful when debugging why a tool didn't fire, but noisy in
+    # prod — opt in explicitly with DEBUG_TOOL_CALLING=1, off by default.
+    _dbg = os.getenv("DEBUG_TOOL_CALLING", "0") == "1"
 
     def _log(*args):
         if _dbg:
