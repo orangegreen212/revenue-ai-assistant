@@ -1,6 +1,5 @@
 """Ingest markdown docs from knowledge_base (EN) and knowledge_base_uk (UK) into Chroma."""
 
-import os
 import sys
 from pathlib import Path
 
@@ -8,8 +7,8 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, UnstructuredMarkdownLoader
 from langchain_community.vectorstores import Chroma
 from embeddings import get_embeddings
-from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from rag.rag_core import validate_api_key
 
 load_dotenv()
 load_dotenv(Path("tools") / ".env")
@@ -19,21 +18,6 @@ KNOWLEDGE_BASE_DIRS = {
     "uk": Path("knowledge_base_uk"),
 }
 CHROMA_DIR = "chroma_db"
-
-
-def get_openrouter_llm() -> ChatOpenAI:
-    """Chat model via OpenRouter (OpenAI-compatible API)."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "OPENROUTER_API_KEY is not set. Copy .env.example to .env and add your key."
-        )
-
-    return ChatOpenAI(
-        model=os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
-        api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
-    )
 
 
 def main() -> None:
@@ -48,8 +32,11 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Ensure OpenRouter credentials / client are valid for the project setup
-    get_openrouter_llm()
+    # Ensure OpenRouter credentials are valid before doing any (slow) ingestion work.
+    key_ok, key_msg = validate_api_key()
+    if not key_ok:
+        print(f"Error: {key_msg}")
+        sys.exit(1)
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
