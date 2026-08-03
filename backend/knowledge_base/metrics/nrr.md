@@ -26,15 +26,15 @@ NRR is one of the strongest signals of product-market fit and account health ava
 
 **Revenue bridge method:**
 
-```
-NRR = (Beginning ARR + Expansion − Contraction − Churn) / Beginning ARR
-```
+**Formula**
+
+NRR = (Beginning ARR + Expansion - Contraction - Churn) / Beginning ARR
 
 **Cohort method (equivalent):**
 
-```
+**Formula**
 NRR = Ending ARR of starting cohort / Beginning ARR of starting cohort
-```
+
 
 Unlike GRR, NRR has no upper cap — it can exceed 100%.
 
@@ -42,10 +42,10 @@ Unlike GRR, NRR has no upper cap — it can exceed 100%.
 
 A cohort starts the year with $1,000,000 ARR. Over the year: $150,000 of expansion, $40,000 of contraction, and $60,000 of churn.
 
-```
+**Example**
 NRR = ($1,000,000 + $150,000 − $40,000 − $60,000) / $1,000,000
 NRR = $1,050,000 / $1,000,000 = 105%
-```
+
 
 # Common mistakes
 
