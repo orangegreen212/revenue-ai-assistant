@@ -15,27 +15,23 @@ Customer Segmentation in SaaS revenue analytics is the practice of splitting the
 
 There is no single formula; segmentation applies standard metrics within each segment:
 
-```
+**Formula**
 Metric_segment = Metric calculated only on customers in segment S
-```
+
 
 Examples:
 
-```
 NRR_enterprise = Ending ARR_enterprise_cohort / Beginning ARR_enterprise_cohort
 CAC_channel    = S&M_channel / New customers_channel
 Churn_plan     = Customers lost_plan / Customers start_plan
-```
 
 Common segment dimensions:
 
-```
 - Firmographic: SMB / Mid-Market / Enterprise (employees or ARR tiers)
 - Commercial: plan, billing interval, contract length
 - Behavioral: usage intensity, feature adoption, support tickets
 - Lifecycle: tenure cohort, trial-converted vs sales-assisted
 - Geo / industry / channel
-```
 
 ## Business Interpretation
 
@@ -57,7 +53,7 @@ Segmentation turns vanity blended KPIs into decisions. Enterprise may have low l
 
 ## SQL Example
 
-```sql
+## SQL Example (PostgreSQL)
 -- MRR, customers, and ARPU by ARR-tier segment
 WITH customer_mrr AS (
     SELECT
@@ -86,7 +82,6 @@ SELECT
 FROM segmented
 GROUP BY segment
 ORDER BY total_mrr DESC;
-```
 
 ## References
 
