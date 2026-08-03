@@ -13,21 +13,16 @@ CAC Payback Period is the number of months needed for the gross profit from a ne
 
 ## Formula
 
-```
 CAC Payback (months) = CAC / (ARPU × Gross Margin %)
-```
 
 Using MRR per customer:
 
-```
 Payback = CAC / (Average MRR per new customer × Gross Margin %)
-```
+
 
 Cohort form:
 
-```
 Payback = months until cumulative gross profit from cohort ≥ CAC spent to acquire cohort
-```
 
 ## Business Interpretation
 
@@ -48,8 +43,6 @@ Shorter payback means faster recovery of acquisition cash and more capacity to r
 **A:** `Payback = CAC / (ARPU × Gross Margin %)`. Investors care because it shows how long growth consumes cash before customers self-fund acquisition. Fast payback supports efficient scaling; long payback needs stronger LTV justification and more capital. Always state margin assumptions and whether CAC is fully loaded.
 
 ## SQL Example
-
-```sql
 -- Approximate payback by acquisition month cohort
 WITH cohort AS (
     SELECT
@@ -76,7 +69,6 @@ SELECT
 FROM cohort c
 JOIN cac ON c.cohort_month = cac.spend_month
 ORDER BY c.cohort_month;
-```
 
 ## References
 
