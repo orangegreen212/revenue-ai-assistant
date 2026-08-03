@@ -12,15 +12,54 @@ from langchain_core.tools import tool
 from tools.csv_io import load_csv
 
 _BALANCE_SHEET_KEYWORDS = (
+    # Statement names
     "balance sheet",
+    "balance sheets",
     "statement of financial position",
+
+    # Assets
     "total assets",
-    "total liabilities",
-    "shareholders' equity",
-    "stockholders' equity",
     "current assets",
     "non-current assets",
+    "cash",
+    "cash equivalents",
+    "accounts receivable",
+    "receivables",
+    "inventory",
+    "goodwill",
+    "intangible assets",
+    "property plant equipment",
+    "ppe",
+
+    # Liabilities & Equity
+    "total liabilities",
     "current liabilities",
+    "non-current liabilities",
+    "long-term debt",
+    "short-term debt",
+    "shareholders' equity",
+    "stockholders' equity",
+    "equity",
+
+    # Working capital
+    "working capital",
+    "current ratio",
+    "quick ratio",
+    "cash ratio",
+    "debt to equity",
+    "debt to assets",
+
+    # Analytical questions
+    "largest change",
+    "biggest change",
+    "top 3 changes",
+    "most impactful changes",
+    "changed the most",
+    "compare balance sheet",
+    "balance sheet items",
+    "liquidity",
+    "leverage",
+    "working capital",
 )
 
 _INCOME_STATEMENT_KEYWORDS = (
