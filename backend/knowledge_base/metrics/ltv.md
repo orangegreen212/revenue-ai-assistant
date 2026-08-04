@@ -25,16 +25,12 @@ LTV is the counterweight to CAC — together they define whether a company's gro
 
 **Standard SaaS formula (gross-profit based):**
 
-```
 LTV = ARPU × Gross Margin % / Customer Churn Rate
-```
 
 **Equivalent lifetime-based form:**
 
-```
 Average Customer Lifetime (months) = 1 / Monthly Churn Rate
 LTV = ARPU × Gross Margin % × Average Customer Lifetime
-```
 
 Using **revenue** instead of gross profit produces "Revenue LTV," which overstates true customer value and should not be used in LTV:CAC ratios.
 
@@ -42,10 +38,8 @@ Using **revenue** instead of gross profit produces "Revenue LTV," which overstat
 
 A customer pays $100/month (ARPU), the business has 80% gross margin, and monthly churn is 2%.
 
-```
 Average lifetime = 1 / 0.02 = 50 months
 LTV = $100 × 0.80 × 50 = $4,000
-```
 
 # Common mistakes
 
