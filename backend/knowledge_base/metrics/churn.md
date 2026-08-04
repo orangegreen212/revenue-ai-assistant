@@ -25,42 +25,32 @@ Churn directly limits how large a recurring revenue base can grow, no matter how
 
 **Logo churn rate:**
 
-```
 Logo Churn Rate = Customers Lost in Period / Customers at Start of Period
-```
 
 **Revenue churn rate:**
 
-```
 Revenue Churn Rate = MRR Lost in Period / MRR at Start of Period
-```
+
 
 **Gross vs. net revenue churn:**
 
-```
 Gross Revenue Churn = (Churned MRR + Contraction MRR) / Beginning MRR
 Net Revenue Churn   = (Churned MRR + Contraction MRR − Expansion MRR) / Beginning MRR
-```
+
 
 Approximate average customer lifetime from monthly churn:
 
-```
 Average Lifetime (months) ≈ 1 / Monthly Logo Churn Rate
-```
 
 # Example
 
 A company starts the month with 500 customers and 20 cancel.
 
-```
 Logo Churn Rate = 20 / 500 = 4%
-```
 
 If those 20 customers represented $3,000 of a $60,000 starting MRR:
 
-```
 Revenue Churn Rate = $3,000 / $60,000 = 5%
-```
 
 # Common mistakes
 
