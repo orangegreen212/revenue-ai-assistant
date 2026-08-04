@@ -23,31 +23,23 @@ CAC is a core input to unit economics. On its own it says little — a $500 CAC 
 
 # Formula
 
-```
 CAC = Sales & Marketing Spend / New Customers Acquired
-```
 
 **Fully-loaded CAC** (recommended for serious unit-economics analysis) includes all attributable costs:
 
-```
 CAC = (S&M salaries + advertising + tools + agencies
        + commissions + attributable overhead) / New Paying Customers
-```
 
 **Blended vs. paid CAC:**
 
-```
 Blended CAC = Total S&M spend / All new customers
 Paid CAC    = Paid acquisition spend / Customers from paid channels only
-```
 
 # Example
 
 A company spends $50,000 on sales and marketing in a month and acquires 100 new paying customers.
 
-```
 CAC = $50,000 / 100 = $500 per customer
-```
 
 # Common mistakes
 
