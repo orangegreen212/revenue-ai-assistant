@@ -35,9 +35,7 @@ Each stage has its own core question and metric rather than a single combined fo
 
 A simplified funnel conversion view:
 
-```
 Stage Conversion Rate = Users reaching Stage N / Users reaching Stage N-1
-```
 
 # Example
 
