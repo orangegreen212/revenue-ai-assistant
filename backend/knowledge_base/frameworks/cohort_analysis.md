@@ -31,9 +31,7 @@ Cohort Retention (Month N) = Customers from Cohort still active at Month N / Cus
 
 Cohort revenue retention (the basis for NRR/GRR when applied to one specific cohort):
 
-```
 Cohort NRR (Month N) = Cohort ARR at Month N / Cohort ARR at Month 0
-```
 
 Cohorts are typically laid out in a triangular retention table:
 
@@ -47,9 +45,7 @@ Cohorts are typically laid out in a triangular retention table:
 
 The January signup cohort starts with 200 customers. Three months later, 170 are still active.
 
-```
 Month-3 Retention = 170 / 200 = 85%
-```
 
 Comparing this to the March cohort's Month-1 retention (94% vs. January's 92%) suggests recent onboarding or product changes may be improving early retention.
 
