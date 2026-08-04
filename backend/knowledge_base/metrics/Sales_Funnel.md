@@ -15,28 +15,21 @@ The Sales Funnel is the staged path from awareness to paying customer (and often
 
 Stage conversion rate:
 
-```
 Conversion (A → B) = Count reaching stage B / Count entering stage A
-```
 
 Overall funnel conversion:
 
-```
 Visitor-to-paid = Paid customers / Visitors
-```
 
 Funnel throughput (example):
 
-```
+
 Expected wins = Opportunities × Win rate
 Pipeline coverage = Pipeline value / Revenue target
-```
 
 Sales velocity (simplified):
 
-```
 Velocity ≈ (# opportunities × win rate × avg deal size) / sales cycle length
-```
 
 ## Business Interpretation
 
@@ -58,7 +51,7 @@ The funnel shows where growth leaks. A strong top-of-funnel with weak SQL-to-win
 
 ## SQL Example
 
-```sql
+sql
 -- Funnel conversion by month (CRM-style stages)
 WITH stages AS (
     SELECT
@@ -83,7 +76,7 @@ SELECT
     wins * 1.0 / NULLIF(opportunities, 0) AS opportunity_win_rate
 FROM stages
 ORDER BY month;
-```
+
 
 ## References
 
