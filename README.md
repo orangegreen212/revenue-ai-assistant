@@ -6,7 +6,7 @@ analysis, CSV/Excel analysis, a live metrics dashboard, a bilingual interface
 (EN/UK), and a built-in retrieval-quality evaluation.
 
 **Live demo:** https://revenue-ai-assistant.vercel.app
-**Backend API docs:** `[https://revenue-ai-assistant.onrender.com/docs](https://revenue-ai-assistant.onrender.com)` — fill in before the review
+**Backend API docs:** https://revenue-ai-assistant.onrender.com
 
 ---
 
