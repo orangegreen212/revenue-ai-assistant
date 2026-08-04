@@ -23,35 +23,25 @@ ARR is the headline number investors, boards, and executives use to gauge compan
 
 # Formula
 
-```
 ARR = MRR × 12
-```
 
 Direct annualization from contracts:
 
-```
 ARR = Σ (annualized recurring fee for each active subscription)
-```
 
 ARR movement bridge (mirrors the MRR bridge, annualized):
 
-```
 Ending ARR = Beginning ARR + New ARR + Expansion ARR
              − Contraction ARR − Churned ARR
-```
 
 # Example
 
-```
 Current MRR = $6,000
 ARR = $6,000 × 12 = $72,000
-```
 
 For a multi-year contract worth $180,000 over 3 years:
 
-```
 ARR contribution = $180,000 / 3 = $60,000 per year
-```
 
 This annualized figure is what should appear in ARR reporting — not the full $180,000 booked in year one.
 
