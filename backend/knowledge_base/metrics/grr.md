@@ -23,15 +23,11 @@ GRR answers a narrower, stricter question than NRR: "Are we keeping the revenue 
 
 # Formula
 
-```
 GRR = (Beginning ARR − Contraction − Churn) / Beginning ARR
-```
 
 Relationship to NRR:
 
-```
 NRR = GRR + (Expansion / Beginning ARR)
-```
 
 GRR is mathematically capped at 100% — reporting GRR above 100% indicates expansion was mistakenly included.
 
@@ -39,10 +35,8 @@ GRR is mathematically capped at 100% — reporting GRR above 100% indicates expa
 
 Same cohort as the NRR example: $1,000,000 beginning ARR, $40,000 contraction, $60,000 churn (expansion is excluded here).
 
-```
 GRR = ($1,000,000 − $40,000 − $60,000) / $1,000,000
 GRR = $900,000 / $1,000,000 = 90%
-```
 
 # Common mistakes
 
