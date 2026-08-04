@@ -25,9 +25,7 @@ A single point-in-time churn or NRR number can be misleading because it blends c
 
 Cohort retention at month N:
 
-```
 Cohort Retention (Month N) = Customers from Cohort still active at Month N / Customers in Cohort at Month 0
-```
 
 Cohort revenue retention (the basis for NRR/GRR when applied to one specific cohort):
 
