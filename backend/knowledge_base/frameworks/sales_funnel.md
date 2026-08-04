@@ -25,29 +25,21 @@ The funnel shows exactly where revenue growth is leaking. A strong top-of-funnel
 
 Stage conversion rate:
 
-```
 Conversion Rate (A → B) = Count reaching Stage B / Count entering Stage A
-```
 
 Pipeline coverage (a common sales-planning check):
 
-```
 Pipeline Coverage = Total Pipeline Value / Revenue Target
-```
 
 Simplified sales velocity:
 
-```
 Sales Velocity ≈ (Opportunities × Win Rate × Average Deal Size) / Sales Cycle Length
-```
 
 # Example
 
 This month: 2,000 leads → 500 MQLs (25% lead-to-MQL) → 150 SQLs (30% MQL-to-SQL) → 60 opportunities (40% SQL-to-opportunity) → 18 closed-won deals (30% win rate).
 
-```
 Overall lead-to-customer conversion = 18 / 2,000 = 0.9%
-```
 
 # Common mistakes
 
