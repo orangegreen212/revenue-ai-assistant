@@ -25,9 +25,7 @@ Blended metrics are frequently misleading. A blended NRR of 100% might hide an e
 
 There is no single segmentation formula; instead, standard metrics are recomputed **within each segment**:
 
-```
 Metric_segment = Metric computed using only customers in segment S
-```
 
 Common segmentation dimensions used in SaaS revenue analytics:
 
