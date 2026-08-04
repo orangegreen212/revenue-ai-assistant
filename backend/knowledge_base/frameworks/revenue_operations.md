@@ -25,9 +25,7 @@ Without RevOps, marketing, sales, and CS often define "customer," "opportunity,"
 
 RevOps is a function, not a single calculated metric, but it is typically measured through the health of the metrics it governs across the funnel:
 
-```
 Funnel efficiency = (Opportunities × Win Rate × Average Deal Size) / Sales Cycle Length
-```
 
 A RevOps team is also commonly evaluated on whether the following stay consistent across systems:
 
