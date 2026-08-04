@@ -25,9 +25,7 @@ Acquiring a new customer is almost always more expensive than retaining an exist
 
 Retention strategies don't have one formula, but their impact is measured through the metrics they influence:
 
-```
 Average Customer Lifetime (months) = 1 / Monthly Churn Rate
-```
 
 A small change in monthly churn has a large effect on lifetime:
 
