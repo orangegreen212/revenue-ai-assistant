@@ -23,15 +23,11 @@ ARPU shows how effectively a business monetizes its customer base, independent o
 
 # Formula
 
-```
 ARPU = Total Recurring Revenue (MRR or ARR) / Number of Active Customers
-```
 
 Seat-based variant for per-seat pricing:
 
-```
 ARPU (per seat) = Total MRR / Number of Paid Seats
-```
 
 | Period | Formula |
 |---|---|
@@ -42,9 +38,7 @@ ARPU (per seat) = Total MRR / Number of Paid Seats
 
 A company has $50,000 MRR across 250 active customers.
 
-```
 ARPU = $50,000 / 250 = $200 per customer per month
-```
 
 # Common mistakes
 
