@@ -23,23 +23,17 @@ MRR is the primary top-line health metric for subscription businesses. It remove
 
 # Formula
 
-```
 MRR = Σ (monthly-equivalent recurring fee for each active subscription)
-```
 
 Normalizing non-monthly billing:
 
-```
 MRR from an annual plan    = Annual Contract Value / 12
 MRR from a quarterly plan  = Quarterly fee / 3
-```
 
 MRR movement bridge (used to explain a change between two months):
 
-```
 Ending MRR = Beginning MRR + New MRR + Expansion MRR
              − Contraction MRR − Churned MRR
-```
 
 | Component | Meaning |
 |---|---|
@@ -52,11 +46,9 @@ Ending MRR = Beginning MRR + New MRR + Expansion MRR
 
 A company has 100 customers on a $50/month plan and 20 customers on a $600/year plan.
 
-```
 Monthly plan MRR   = 100 × $50           = $5,000
 Annual plan MRR    = 20 × ($600 / 12)    = $1,000
 Total MRR                                = $6,000
-```
 
 # Common mistakes
 
