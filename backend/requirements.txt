@@ -18,3 +18,4 @@ openai
 tiktoken
 python-dotenv
 pytest
+shutil
