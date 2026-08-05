@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-
+import shutil
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, UnstructuredMarkdownLoader
 from langchain_community.vectorstores import Chroma
@@ -61,6 +61,11 @@ def main() -> None:
         print(f"[{lang}] Split into {len(chunks)} chunk(s).")
 
     print(f"Total chunks to index: {len(all_chunks)}")
+
+    # Remove previous index to avoid stale documents
+    if Path(CHROMA_DIR).exists():
+        print(f"Removing existing vector store: {CHROMA_DIR}")
+        shutil.rmtree(CHROMA_DIR)
 
     embeddings = get_embeddings()
 
