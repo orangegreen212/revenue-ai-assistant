@@ -240,11 +240,3 @@ see "Why RAG instead of fine-tuning?" above.
   acceptable trade-off for a course project in an isolated container, but
   not for production with untrusted traffic without a real sandbox
 
----
-
-## Context
-
-A learning project (Turing College, AI Engineering Sprint 2: LangChain,
-RAG, Streamlit/Next.js). Optional tasks completed: **multi-language
-support** and **RAG evaluation** (Hard), **prompt injection protection**
-and **logging and monitoring** (Medium).
